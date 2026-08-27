@@ -134,6 +134,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 | 嵌套路径工作区 | dsh 启动时清理嵌套记录 | attach 与 dsh 行为一致：嵌套 cwd 不建组 |
 | 向 zcode 写入会话 | 时间显示异常（旧会话显示 1 分钟前）、部分会话渲染空白 | **方向整体移除**（zcode 只出不进）；已导入的 246 个会话已清理（识别规则：sess_+uuid5 版本位=5，备份 db.sqlite.cleanup-bak-*） |
 | projcache 无 title 行 | 列表不显示标题（显示工作区名），点开才有 | 侧栏标题读投影缓存而非日志；attach-dsh 现在同时回填 title 行 |
+| 会话 id 命中归档列表 | 数据四层全对但侧栏不渲染（删除→同 id 复活即隐身） | prune/删除同步清 archivedSessionIds；复活历史归档需手工移除 id |
 | 双向同步导致两边列表污染 | 同一会话两边各一份，续聊即分叉 | 产品决策改为单向：跨 agent → dsh；to-zcode 移除，写入器存档 |
 | zcode 写入每会话备份一次 | 一次导入产生百余个全量备份（23GB） | 已改为每次运行备份一次；存量备份已清理 |
 

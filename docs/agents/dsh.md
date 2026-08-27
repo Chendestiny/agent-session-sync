@@ -1,4 +1,4 @@
-﻿# dsh（DeepSeek Harness）会话结构详解
+# dsh（DeepSeek Harness）会话结构详解
 
 核实基线：dsh 0.1.1-rc.1（Windows，DSH_HOME=`~/.dsh`）；2026-08-25 全量核对 349 会话。
 
@@ -123,6 +123,10 @@ session/imported(ignorable) → user/message 环境声明(source.kind=plugin，U
   记录时再建 `C:\Users\demo\.zcode\workspace\default`）会被 dsh 启动时清理——
   attach 工具与之间保持一致，这类 cwd 不建组、留在未分组。
 - 无 cwd（`_no-cwd`）、cwd 目录不存在、临时目录的会话按设计留在未分组。
+- **归档列表（第四种状态，实测踩坑）**：`global.archivedSessionIds` 按 session id 记忆
+  归档，被归档的会话侧栏不渲染——与挂载/投影完全独立。若删除后以**相同 id 复活**
+  （幂等导入的天然行为），id 仍在归档列表 → 「复活即隐身」（数据四层全对但 UI 不显示）。
+  prune/手动删除已同步清理归档记录；复活历史归档会话需手工从该列表移除 id。
 - **`session_projcache.json` 是侧栏标题的数据源**（dsh-session-projection-cache 的
   cachedSnapshot 零 IO 列表读）：正常只在会话被打开/adopt 时回填，直接落盘的导入会话
   没有条目 → 列表回退显示工作区名，点开后才有标题。`attach-dsh` 现在会同步回填

@@ -239,6 +239,10 @@ def synthesize(
         push("turn/end", {"turn": i, "reason": {"kind": "completed"}})
 
     title = (title_override or sess.title or "").strip()
+    # 兜底：无显式标题 → 首轮提问首行（对齐 dsh 原生 fallback 与 codex 转换器约定），
+    # 避免「进行中的会话」（如 hermes 自同步）导入后侧栏回退成工作区名。
+    if not title and turns:
+        title = " ".join(turns[0].prompt.strip().split())[:40]
     # 来源前缀自动生成：不依赖 titles.json 分发（第三方 skill 副本里没有该文件），
     # 侧栏里一眼区分「这条从哪来」。已有前缀（titles.json 时代写入的）不重复加。
     if title and not title.startswith(
@@ -472,7 +476,7 @@ def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_
                  "from": session_dir}, ensure_ascii=False) + chr(10))
             moved += 1
 
-    # 清引用：workspace.json 的 sessionIds + projcache 条目
+    # 清引用：workspace.json 的 sessionIds + archivedSessionIds + projcache 条目
     for store_file, kind in (("workspace.json", "ws"), ("session_projcache.json", "pc")):
         sp = os.path.normpath(os.path.join(str(dsh_root), "..", "storages", store_file))
         if not os.path.exists(sp):
@@ -485,6 +489,14 @@ def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_
                 after = [s for s in before if s not in targets]
                 if len(after) != len(before):
                     rec["sessionIds"] = after
+                    changed = True
+            # 归档列表同样清理：否则「删除→复活（id 不变）」的会话因 id 仍在
+            # archivedSessionIds 里被侧栏隐藏（复活即隐身，实测踩坑）
+            arch = data.get("global", {}).get("archivedSessionIds")
+            if isinstance(arch, list):
+                new_arch = [s for s in arch if s not in targets]
+                if len(new_arch) != len(arch):
+                    data["global"]["archivedSessionIds"] = new_arch
                     changed = True
         else:
             tabs = data.get("tables", {}).get("sessions", {})
