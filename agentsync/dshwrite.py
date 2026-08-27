@@ -724,8 +724,8 @@ def plan_write(dsh_root: str, sess: Session, budget: int | None, force: bool = F
     path = session_log_path(dsh_root, sess.cwd, meta["id"])
     if not sess.turns:
         return {"action": "skip", "reason": "无可导入轮次", "path": path, "meta": meta, "events": [], "stats": stats}
-    if not force and sess.source_id in load_tombstones(dsh_root):
-        return {"action": "skip-deleted", "reason": "曾被删除（墓碑拦截，--force 可强导）", "path": path, "meta": meta, "events": [], "stats": stats}
+    if sess.source_id in load_tombstones(dsh_root):
+        return {"action": "skip-deleted", "reason": "曾被删除（墓碑拦截；如确要恢复，先从墓碑文件移除该 id）", "path": path, "meta": meta, "events": [], "stats": stats}
     if not os.path.exists(path) or force:
         return {"action": "create", "path": path, "meta": meta, "events": events, "stats": stats}
     header, existing = read_log_events(path)
