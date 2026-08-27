@@ -1,4 +1,4 @@
-﻿# WorkBuddy 会话结构详解
+# WorkBuddy 会话结构详解
 
 核实基线：WorkBuddy 5.3.x（Windows 本机 `~/.workbuddy`，34 会话实测）；
 写入配方来自 agentctxsync 的 workbuddy 适配器（其对 5.3.13 实机验证，MIT）。
@@ -56,6 +56,9 @@ model: custom-local:qwen3.6-35b}`。查询排空 `deleted_at IS NULL`，按
 - 典型事件序列：`message(user) → (reasoning → function_call → function_call_result)* → reasoning → message(assistant)`；
   user 开新轮；reasoning 缓冲后前置到对应 assistant 步；call/result 按 callId 归位；
 - 跳过：`file-history-snapshot`、`resend-fork-notice`、role=system；
+- **注入剥离（关键）**：user message 会内嵌 `<system-reminder data-role="user-context">`
+  块（OS/IDE/skills 列表，实测可达 15K+ 字符），真实提问在其 `<user_query>` 标签里——
+  读取时剥离注入块只留 user_query 正文（实测案例：15232 字符 → 2 字符「你好」）；
 - title 回退链：sessions.title → custom_title → ai-title 事件；
 - 实测：34 会话 / 2658 工具调用全部正确解析。
 
