@@ -463,6 +463,25 @@ def _wb_parse_jsonl(path: str, session_id: str) -> tuple[list[dict], str | None]
     return events, title
 
 
+def _strip_wb_injection(text: str) -> str:
+    """剥离 WorkBuddy 注入的 user-context 块，只留真实用户输入。
+
+    WorkBuddy 的 user message 会内嵌 <system-reminder data-role="user-context">
+    块（OS/Shell/IDE/skills 列表，可达上万字符），真实提问在其中的
+    <user_query>…</user_query> 标签里。策略：
+      1) 无 system-reminder → 原样返回；
+      2) 有 → 提取全部 <user_query> 内容为正文；没有该标签则丢弃整条（纯注入）。
+    """
+    if "<system-reminder" not in text:
+        return text
+    import re as _re
+
+    queries = _re.findall(r"<user_query>(.*?)</user_query>", text, _re.S)
+    if queries:
+        return "\n".join(q.strip() for q in queries if q.strip())
+    return ""
+
+
 def read_workbuddy(home, include_deleted: bool = False) -> list[Session]:
     """WorkBuddy → IR。消息文件可能因项目移动存在多副本：扫全 projects/ 取并集，
     按 (type, role, timestamp) 去重后按时间排序（agentctxsync 2026-08-25 踩坑结论）。"""
@@ -539,6 +558,7 @@ def read_workbuddy(home, include_deleted: bool = False) -> list[Session]:
                 role = e.get("role")
                 if role == "user":
                     text = _wb_text(e.get("content")).strip()
+                    text = _strip_wb_injection(text)
                     if not text:
                         continue
                     flush_pending()
