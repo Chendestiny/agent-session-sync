@@ -60,7 +60,7 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 帮我安装 agent-session-sync：irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
 ```
 
-安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句：
+安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
 
 ```text
 同步会话：五源全量增量导入 dsh，先跑 selftest 和 verify 自检

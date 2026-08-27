@@ -26,3 +26,6 @@ reference/
 __pycache__/
 *.pyc
 .venv/
+
+.agentsync-deleted.json
+scripts/pre_import_ids.json

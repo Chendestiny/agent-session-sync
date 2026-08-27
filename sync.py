@@ -129,7 +129,9 @@ def cmd_to_dsh(args):
                 extra = f"（源 {plan['sourceTurns']} 轮 > 已有 {plan['existingTurns']} 轮，追加 {len(plan['events'])} 事件）"
             elif tag == "create":
                 extra = f"（{plan['stats']['messages']} 消息 / {plan['stats']['toolCalls']} 工具调用）"
-            print(f"  [{tag:10}] {src}:{sess.source_id} 「{(sess.title or sess.turns[0].prompt[:24] if sess.turns else '')[:32]}」 {extra}")
+            elif tag == "skip-deleted":
+                extra = f"（{plan['reason']}）"
+            print(f"  [{tag:13}] {src}:{sess.source_id} 「{(sess.title or sess.turns[0].prompt[:24] if sess.turns else '')[:32]}」 {extra}")
             if tag in ("create", "append"):
                 planned += 1
                 if args.apply:
@@ -242,7 +244,7 @@ def cmd_selftest(args):
     ok, problems = dshwrite.validate_session_events(events)
     check(ok and len(events) > 0, f"事件校验通过（{len(events)} 事件）")
     back = read_dsh(dsh_root)
-    check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "自检会话", "读回 1 会话 1 轮带标题")
+    check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "[codex] 自检会话", "读回 1 会话 1 轮带标题（自动来源前缀）")
 
     print("== 2/3 dsh 增量追加 ==")
     plan2 = dshwrite.plan_write(dsh_root, fake(v2=True), None)

@@ -239,6 +239,12 @@ def synthesize(
         push("turn/end", {"turn": i, "reason": {"kind": "completed"}})
 
     title = (title_override or sess.title or "").strip()
+    # 来源前缀自动生成：不依赖 titles.json 分发（第三方 skill 副本里没有该文件），
+    # 侧栏里一眼区分「这条从哪来」。已有前缀（titles.json 时代写入的）不重复加。
+    if title and not title.startswith(
+        ("[zcode] ", "[hermes] ", "[codex] ", "[workbuddy] ", "[dsh] ")
+    ):
+        title = f"[{provider}] {title}"
     if title:
         push("session/title", {"title": title, "messageSeqs": [], "source": {"kind": "user"}})
 
@@ -444,6 +450,13 @@ def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_
     targets = list(plan["orphans"] if do_orphans else []) + list(plan["junk"] if do_junk else [])
     if not targets:
         return {"moved": 0}
+    # 墓碑登记：本次删除的源 id 永久拦截至 .agentsync-deleted.json（--force 可强导）
+    tp = tombstone_path(dsh_root)
+    tomb = load_tombstones(dsh_root)
+    for sid in targets:
+        if sid.startswith("import-"):
+            tomb.add(sid[len("import-"):])
+    json.dump(sorted(tomb), open(tp, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
     trash = os.path.normpath(os.path.join(str(dsh_root), "..", "..", ".trash-dsh"))
     os.makedirs(trash, exist_ok=True)
     with open(os.path.join(trash, "manifest.jsonl"), "a", encoding="utf-8") as manifest:
@@ -660,16 +673,59 @@ def read_log_events(path: str) -> tuple[dict | None, list[dict]]:
     return header, events
 
 
+# ── 墓碑：被删除的源会话不再复活 ─────────────────────────────────────────
+
+
+def tombstone_path(dsh_root: str) -> str:
+    return os.path.join(str(dsh_root), ".agentsync-deleted.json")
+
+
+def load_tombstones(dsh_root: str) -> set[str]:
+    """已删除的源 source_id 集合。数据源：回收站 manifest（id 去 import- 前缀）。"""
+    tp = tombstone_path(dsh_root)
+    if os.path.exists(tp):
+        try:
+            return set(json.load(open(tp, encoding="utf-8")))
+        except Exception:
+            pass
+    return set()
+
+
+def rebuild_tombstones(dsh_root: str) -> int:
+    """从 ~/.trash-dsh/manifest*.jsonl 重建墓碑，返回条数。"""
+    home = os.path.expanduser("~")
+    trash = os.path.join(home, ".trash-dsh")
+    ids: set[str] = set()
+    for mf in ("manifest.jsonl", "manifest-purged.jsonl"):
+        p = os.path.join(trash, mf)
+        if not os.path.exists(p):
+            continue
+        for ln in open(p, encoding="utf-8"):
+            try:
+                rec = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            sid = str(rec.get("id", ""))
+            if sid.startswith("import-"):
+                ids.add(sid[len("import-"):])
+    # 兼容历史：把墓碑也并入 projcache 里已不存在的磁盘残留（prune 竞态漏网的）
+    json.dump(sorted(ids), open(tombstone_path(dsh_root), "w", encoding="utf-8"), ensure_ascii=False, indent=0)
+    return len(ids)
+
+
 def plan_write(dsh_root: str, sess: Session, budget: int | None, force: bool = False, titles: dict | None = None) -> dict:
-    """计算目标路径与动作（create / append / up-to-date / skip-empty）。
+    """计算目标路径与动作（create / append / up-to-date / skip-empty / skip-deleted）。
 
     force=True：已存在的导入会话整体重写（用于修复格式损坏的旧导入）。
     titles：{source_id: 新标题} 覆盖（配合 force 重写生效）。
+    墓碑：源会话曾被删除（prune/手动）→ 跳过，除非 force。
     """
     meta, events, stats = synthesize(sess, budget=budget, title_override=(titles or {}).get(sess.source_id))
     path = session_log_path(dsh_root, sess.cwd, meta["id"])
     if not sess.turns:
         return {"action": "skip", "reason": "无可导入轮次", "path": path, "meta": meta, "events": [], "stats": stats}
+    if not force and sess.source_id in load_tombstones(dsh_root):
+        return {"action": "skip-deleted", "reason": "曾被删除（墓碑拦截，--force 可强导）", "path": path, "meta": meta, "events": [], "stats": stats}
     if not os.path.exists(path) or force:
         return {"action": "create", "path": path, "meta": meta, "events": events, "stats": stats}
     header, existing = read_log_events(path)
