@@ -1,4 +1,4 @@
-﻿# 🔄 跨 Agent 同步会话（agentsync）
+# 🔄 跨 Agent 同步会话（agentsync）
 
 简体中文 | [English](./README_EN.md)
 
@@ -63,10 +63,19 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句：
 
 ```text
-同步会话
-把 demo 项目的 hermes 会话同步到 dsh
-归档会话
-清理 dsh 里的孤儿和测试会话
+同步会话：五源全量增量导入 dsh，先跑 selftest 和 verify 自检
+```
+
+```text
+把 demo 项目工作区里的 hermes 会话也同步进 dsh
+```
+
+```text
+把 dsh 里已导入的会话导出一份 Markdown 归档到 archive 目录
+```
+
+```text
+清理 dsh 里的导入会话：来源已删除的孤儿、纯打招呼和冒烟测试的都清掉
 ```
 
 agent 会按 `SKILL.md` 的纪律执行：selftest → dry-run → 确认 → apply → **二次验证**。
