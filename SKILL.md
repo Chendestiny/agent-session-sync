@@ -1,4 +1,4 @@
----
+﻿---
 name: session-sync
 description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 五源 → dsh 单向 + Markdown 归档）。当用户要"同步会话 / 导入会话 / 迁移会话 / 把 X 的会话搬到 Y / 归档会话 / 在 dsh 里继续另一家的会话"时使用。本目录即完整工具包：sync.py 为 CLI，AGENTS.md 为完整操作手册。
 ---
@@ -26,6 +26,8 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 2. **先 status 再动作**：`python sync.py status` 确认五源路径与数量。
 3. **默认 dry-run**：所有写命令先不带 `--apply` 跑一遍，把计划给用户看过再落盘。
 4. 出错就停下报告，不要猜测性重试。
+6. **同步完必须二次验证**：`verify` 通过 + 抽查落盘文件三要素（imported 标记含 ignorable、
+   [来源]前缀标题、分区目录=cwd编码）+ `attach-dsh` 后重启 dsh 目视复核；
 5. **需要跑 node 的校验前先 `nvm use 22`**（node:zlib 的 zstd API 要求 Node 22+；
    `tools/verify-dsh-backend.cmd` 已内置自动选择 nvm 22.x，可直接调用）。
 

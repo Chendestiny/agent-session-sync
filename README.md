@@ -1,4 +1,4 @@
-# 跨 Agent 同步会话（agentsync）
+﻿# 跨 Agent 同步会话（agentsync）
 
 把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy** 五家的会话记录归一到 **dsh**：
 任何一家的历史会话都可以导入 dsh **继续对话**，并可导出统一的 **Markdown 归档**。
@@ -67,7 +67,20 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 清理 dsh 里的孤儿和测试会话                # prune
 ```
 
-agent 会按 `SKILL.md` 的纪律执行：selftest → dry-run → 确认 → apply。也可以直接克隆使用：
+agent 会按 `SKILL.md` 的纪律执行：selftest → dry-run → 确认 → apply → **二次验证**。
+
+**同步完的二次验证**（粘贴给 agent 即可让它自证）：
+
+```text
+按 SKILL.md 做发布后二次验证：
+1. python sync.py verify                     # 全部导入会话事件纪律通过
+2. 抽查刚导入会话的落盘文件三要素：session/imported 标记(ignorable=true)、
+   [来源] 前缀标题、分区目录名与头部 cwd 编码一致
+3. 退出 dsh 后 python sync.py attach-dsh --apply 回填分组+projcache 标题行，
+   重启 dsh 后确认：出现在对应工作区分组、列表带标题、点开可续聊
+```
+
+也可以直接克隆使用：
 
 ```bash
 git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-sync
