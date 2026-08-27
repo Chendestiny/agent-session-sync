@@ -50,6 +50,33 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
 
+## 对任意 agent 一句话开始（零手动配置）
+
+把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
+
+```text
+帮我安装 agent-session-sync：irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
+```
+
+安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说：
+
+```text
+同步会话                              # 五源 → dsh 单向（增量、幂等）
+把 frontend 工作区的 hermes 会话同步到 dsh     # 指定来源+工作区
+归档会话                               # 导出 Markdown 到 archive/
+清理 dsh 里的孤儿和测试会话                # prune
+```
+
+agent 会按 `SKILL.md` 的纪律执行：selftest → dry-run → 确认 → apply。也可以直接克隆使用：
+
+```bash
+git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-sync
+pip install zstandard && python sync.py selftest
+```
+
+> AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
+> 故障排查 / 升级适配），交给任何 agent 读它即可。
+
 ## 作为 skill 使用（整目录即 skill bundle）
 
 本目录本身就是 skill 包（`SKILL.md` + `sync.py` + `agentsync/` + `tools/` + `docs/`），
@@ -65,24 +92,15 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 通用过滤：`--session <源ID子串>` `--cwd <路径子串>` `--since <天数>` `--limit <N>`；
 `to-dsh --budget <tokens>` 对超长会话做三层裁剪保续聊。
 
-## 验证情况（本机实测，2026-08-26 收官状态）
+## 发布前验证概览
 
-- 五源读取：zcode 12 / hermes 208 / dsh 343 / codex 103 / workbuddy 34 个会话。
-- **dsh 侧全链路落地**：357 个会话导入（zcode 12 + hermes 208 + codex 103 + workbuddy 34，
-  `--budget 550000` 防超限）→ 子代理分批为 345 个会话总结中文短标题并重写 →
-  `attach-dsh` 分批把会话挂进工作区分组（首轮 200 个：74 进既有 + 126 进 7 个
-  新建工作区）并回填 projcache 标题行（356 个，侧栏列表标题的数据源）→ dsh 重启后
-  分组/列表标题/续聊全部正常（boot 实测通过）。
-- 留在「未分组」的 136 个属预期：113 个 hermes 旧会话无 cwd（dsh 原生语义）、
-  13 个 cwd 嵌套在已有工作区路径下（dsh 启动会清理这类记录，工具与之间保持一致）、
-  7 个临时目录、3 个 cwd 已删除。
-- **工作区分区（全量核对）**：zcode project_id 规则 5/5 吻合；dsh projectKey 规则
-  349/349 吻合（会话头 cwd 重编码精确落回所在目录名）。
-- dsh 写入：`JsonlSessionPersistence` 原生后端读回校验 323/323 通过
-  （`tools\verify-dsh-backend.cmd` 可复跑）。
-- 增量：源会话增长后重导只 append 新轮次，seq 连续；幂等重跑全 up-to-date。
-- 工具调用（含参数/结果/失败态）、reasoning、图片占位均保留。
+以下能力均在真实数据上验证通过后发布（方法见各文档，可在你机器复跑）：
 
+- 五源读取：codex / hermes / dsh / zcode / workbuddy 全部解析正常（含工具调用、reasoning、失败态、图片占位）
+- dsh 写入：使用 dsh 自带 JsonlSessionPersistence 后端读回校验 100% 通过（tools/verify-dsh-backend.cmd 可复跑）
+- 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
+- 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
+- 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
 ### 踩坑记录（都已修进代码 + 文档）
 
 | 坑 | 现象 | 修复 |
