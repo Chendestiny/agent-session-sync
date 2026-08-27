@@ -1,4 +1,4 @@
-# 🔄 跨 Agent 同步会话（agentsync）
+﻿# 🔄 跨 Agent 同步会话（agentsync）
 
 简体中文 | [English](./README_EN.md)
 
@@ -33,7 +33,7 @@ pip install zstandard        # Python 侧唯一第三方依赖
 nvm use 22                   # node 相关校验用（可选）
 
 python sync.py selftest                        # 沙箱自检：全绿再动真数据
-python sync.py status                          # 五源概览
+python sync.py status                          # 各 agent 源概览
 python sync.py to-dsh   --source zcode         # dry-run 计划
 python sync.py to-dsh   --source zcode --apply # ① 导入到 dsh
 # ② 完全退出 dsh 后：挂工作区分组 + 回填侧栏标题缓存（新会话进分组且列表直接带标题）
@@ -63,7 +63,7 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
 
 ```text
-同步会话：五源全量增量导入 dsh，先跑 selftest 和 verify 自检
+同步会话：把各 agent 的会话全量增量导入 dsh，先跑 selftest 和 verify 自检
 ```
 
 ```text
@@ -120,7 +120,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 
 以下能力均在真实数据上验证通过后发布（方法见各文档，可在你机器复跑）：
 
-- 五源读取：codex / hermes / dsh / zcode / workbuddy 全部解析正常（含工具调用、reasoning、失败态、图片占位）
+- 跨 agent 读取：codex / hermes / dsh / zcode / workbuddy 全部解析正常（含工具调用、reasoning、失败态、图片占位）
 - dsh 写入：使用 dsh 自带 JsonlSessionPersistence 后端读回校验 100% 通过（tools/verify-dsh-backend.cmd 可复跑）
 - 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
 - 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
@@ -134,7 +134,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 | 嵌套路径工作区 | dsh 启动时清理嵌套记录 | attach 与 dsh 行为一致：嵌套 cwd 不建组 |
 | 向 zcode 写入会话 | 时间显示异常（旧会话显示 1 分钟前）、部分会话渲染空白 | **方向整体移除**（zcode 只出不进）；已导入的 246 个会话已清理（识别规则：sess_+uuid5 版本位=5，备份 db.sqlite.cleanup-bak-*） |
 | projcache 无 title 行 | 列表不显示标题（显示工作区名），点开才有 | 侧栏标题读投影缓存而非日志；attach-dsh 现在同时回填 title 行 |
-| 双向同步导致两边列表污染 | 同一会话两边各一份，续聊即分叉 | 产品决策改为单向：五源 → dsh；to-zcode 移除，写入器存档 |
+| 双向同步导致两边列表污染 | 同一会话两边各一份，续聊即分叉 | 产品决策改为单向：跨 agent → dsh；to-zcode 移除，写入器存档 |
 | zcode 写入每会话备份一次 | 一次导入产生百余个全量备份（23GB） | 已改为每次运行备份一次；存量备份已清理 |
 
 ## 📂 目录结构

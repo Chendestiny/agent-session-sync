@@ -1,6 +1,6 @@
-﻿---
+---
 name: session-sync
-description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 五源 → dsh 单向 + Markdown 归档）。当用户要"同步会话 / 导入会话 / 迁移会话 / 把 X 的会话搬到 Y / 归档会话 / 在 dsh 里继续另一家的会话"时使用。本目录即完整工具包：sync.py 为 CLI，AGENTS.md 为完整操作手册。
+description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent → dsh 单向 + Markdown 归档）。当用户要"同步会话 / 导入会话 / 迁移会话 / 把 X 的会话搬到 Y / 归档会话 / 在 dsh 里继续另一家的会话"时使用。本目录即完整工具包：sync.py 为 CLI，AGENTS.md 为完整操作手册。
 ---
 
 # 跨 Agent 会话同步（session-sync）
@@ -23,7 +23,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 ## 执行纪律（必须遵守）
 
 1. **第一条命令跑自检**：`python sync.py selftest`，全绿才继续（沙箱运行，不碰真实数据）。
-2. **先 status 再动作**：`python sync.py status` 确认五源路径与数量。
+2. **先 status 再动作**：`python sync.py status` 确认各 agent 源路径与数量。
 3. **默认 dry-run**：所有写命令先不带 `--apply` 跑一遍，把计划给用户看过再落盘。
 4. 出错就停下报告，不要猜测性重试。
 6. **同步完必须二次验证**：`verify` 通过 + 抽查落盘文件三要素（imported 标记含 ignorable、
@@ -35,8 +35,8 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 
 ```bash
 cd "<本目录>"                     # 路径含空格，务必带引号
-python sync.py status                                  # 五源概览
-python sync.py to-dsh                                  # 计划（dry-run，默认全五源）
+python sync.py status                                  # 各 agent 源概览
+python sync.py to-dsh                                  # 计划（dry-run，默认全部已探测源）
 python sync.py to-dsh --source zcode --apply --budget 550000   # 落盘：导入到 dsh
 python sync.py to-dsh --source dsh --session <id> --apply   # 指定会话
 python sync.py to-dsh --apply --force [--budget 550000]    # 修复损坏的旧导入（整体重写）

@@ -43,7 +43,7 @@ python sync.py attach-dsh --apply                                           # �
 
 | 任务 | 命令 |
 |---|---|
-| 看五源概览 | `python sync.py status` |
+| 看各 agent 源概览 | `python sync.py status` |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source zcode,hermes,codex,workbuddy` 然后 `--apply --budget 550000` |
 | 挂工作区分组 + 标题预投影 | **退出 dsh 后** `python sync.py attach-dsh --apply`（改 workspace.json + 回填 projcache title 行，均先备份） |
 | 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --apply --force --titles titles.json --budget 550000` → 重启 dsh |
