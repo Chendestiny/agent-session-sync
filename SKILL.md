@@ -26,9 +26,13 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 2. **先 status 再动作**：`python sync.py status` 确认各 agent 源路径与数量。
 3. **默认 dry-run**：所有写命令先不带 `--apply` 跑一遍，把计划给用户看过再落盘。
 4. 出错就停下报告，不要猜测性重试。
+5. **attach-dsh / prune 的硬前提：dsh 必须完全退出**（含托盘/后台 node 进程）。
+   若检测到 dsh 在运行：**停下来告知用户「请先完全退出 dsh，退出后告诉我，我再执行 attach」**，
+   绝不绕过、不用任何方式强行写入——运行中写入会被 dsh 退出时的内存回写覆盖，
+   造成「执行成功了但侧边栏看不到」的假象。用户重启 dsh 后才能看到结果。
 6. **同步完必须二次验证**：`verify` 通过 + 抽查落盘文件三要素（imported 标记含 ignorable、
-   [来源]前缀标题、分区目录=cwd编码）+ `attach-dsh` 后重启 dsh 目视复核；
-5. **需要跑 node 的校验前先 `nvm use 22`**（node:zlib 的 zstd API 要求 Node 22+；
+   [来源]前缀标题、分区目录=cwd编码）+ `attach-dsh`（dsh 已退出时）后提醒用户重启 dsh 目视复核。
+7. **需要跑 node 的校验前先 `nvm use 22`**（node:zlib 的 zstd API 要求 Node 22+；
    `tools/verify-dsh-backend.cmd` 已内置自动选择 nvm 22.x，可直接调用）。
 
 ## 常用命令

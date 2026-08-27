@@ -66,7 +66,7 @@ cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）
 1. **永不写入 zcode 的存储**（to-zcode 方向已移除；`agentsync/zcodewrite.py` 仅作历史参考）。
 2. 读取侧永远只读（sqlite `mode=ro`）；写 dsh 只新增 `import-*` 会话目录，不动原生会话。
 3. 改 dsh 的 workspace.json/projcache（attach-dsh）必须在其完全退出后进行。
-2. 对用户报结果时如实说明：写了多少、跳过多少、有无裁剪。
+3. 对用户报结果时如实说明：写了多少、跳过多少、有无裁剪、哪些步骤被阻塞待用户配合。
 
 ## 4. 文档地图
 
