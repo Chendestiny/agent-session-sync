@@ -1,4 +1,6 @@
-﻿# 跨 Agent 同步会话（agentsync）
+﻿# 🔄 跨 Agent 同步会话（agentsync）
+
+简体中文 | [English](./README_EN.md)
 
 把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy** 五家的会话记录归一到 **dsh**：
 任何一家的历史会话都可以导入 dsh **继续对话**，并可导出统一的 **Markdown 归档**。
@@ -20,7 +22,7 @@ workbuddy ─┘
 设计参考 [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import)（MIT，dsh 插件，
 见 `reference/`），写入规格按本机安装的 dsh 0.1.1-rc / zcode 0.16.x 逐字段逆向核实。
 
-## 快速开始
+## 🚀 快速开始
 
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，
 `tools/verify-dsh-backend.cmd` 会自动优先选 nvm 的 22.x，无需手动切换）。
@@ -50,7 +52,7 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
 
-## 对任意 agent 一句话开始（零手动配置）
+## 💬 对任意 agent 一句话开始（零手动配置）
 
 把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
 
@@ -58,13 +60,13 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 帮我安装 agent-session-sync：irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
 ```
 
-安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说：
+安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句：
 
 ```text
-同步会话                              # 五源 → dsh 单向（增量、幂等）
-把 frontend 工作区的 hermes 会话同步到 dsh     # 指定来源+工作区
-归档会话                               # 导出 Markdown 到 archive/
-清理 dsh 里的孤儿和测试会话                # prune
+同步会话
+把 demo 项目的 hermes 会话同步到 dsh
+归档会话
+清理 dsh 里的孤儿和测试会话
 ```
 
 agent 会按 `SKILL.md` 的纪律执行：selftest → dry-run → 确认 → apply → **二次验证**。
@@ -90,7 +92,7 @@ pip install zstandard && python sync.py selftest
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
 
-## 作为 skill 使用（整目录即 skill bundle）
+## 🧩 作为 skill 使用（整目录即 skill bundle）
 
 本目录本身就是 skill 包（`SKILL.md` + `sync.py` + `agentsync/` + `tools/` + `docs/`），
 用 junction 链接到 skills 目录（免管理员权限）：
@@ -105,7 +107,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 通用过滤：`--session <源ID子串>` `--cwd <路径子串>` `--since <天数>` `--limit <N>`；
 `to-dsh --budget <tokens>` 对超长会话做三层裁剪保续聊。
 
-## 发布前验证概览
+## 🧪 发布前验证概览
 
 以下能力均在真实数据上验证通过后发布（方法见各文档，可在你机器复跑）：
 
@@ -114,7 +116,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 - 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
 - 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
 - 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
-### 踩坑记录（都已修进代码 + 文档）
+### ⚠️ 踩坑记录（都已修进代码 + 文档）
 
 | 坑 | 现象 | 修复 |
 |---|---|---|
@@ -126,7 +128,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 | 双向同步导致两边列表污染 | 同一会话两边各一份，续聊即分叉 | 产品决策改为单向：五源 → dsh；to-zcode 移除，写入器存档 |
 | zcode 写入每会话备份一次 | 一次导入产生百余个全量备份（23GB） | 已改为每次运行备份一次；存量备份已清理 |
 
-## 目录结构
+## 📂 目录结构
 
 ```
 AGENTS.md               AI agent 操作手册（交给 agent 读的入口）
@@ -136,7 +138,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 docs/FORMATS.md         格式总览 + 归一化 IR + 索引
 docs/agents/            各家会话结构详解（深度规格分册）
   dsh.md  zcode.md  hermes.md  codex.md  workbuddy.md
-examples/               真实示例：命令输出转录 + 两条完整转换实例（含再生成方法）
+examples/               真实示例：命令输出转录 + 转换实例（含再生成方法）
 tools/
   verify-dsh-backend.mjs   dsh 原生后端读回校验（Node 22+，先 nvm use 22）
   verify-dsh-backend.cmd   上者的 Windows 包装器（自动选 nvm 22.x）
@@ -153,7 +155,7 @@ reference/dsh-chat-import/  参考仓库源码
 .test-dsh-root/ .test-zcode-db.sqlite   测试产物（可删）
 ```
 
-## 安全边界
+## 🔒 安全边界
 
 - 读取永远只读（sqlite `mode=ro` URI）。
 - 写 dsh：只新增 `import-*` 会话目录，不触碰原生会话文件。
