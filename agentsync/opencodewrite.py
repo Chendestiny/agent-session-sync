@@ -40,6 +40,15 @@ def _norm_dir(d: str) -> str:
     return (d or "").replace("\\", "/").rstrip("/").lower()
 
 
+def _derived_path(directory: str) -> str:
+    """原生规律（真库实证）：path = directory 去掉盘符前缀（'C:/Users/x' → 'Users/x'）。
+    桌面版按 path/project 圈会话列表，缺它外来会话不显示。"""
+    d = directory.replace("\\", "/")
+    if len(d) > 2 and d[1] == ":" and d[2] == "/":
+        return d[3:]
+    return d.lstrip("/")
+
+
 def _resolve_project(cur, directory: str) -> str:
     """按 directory 匹配 project（桌面列表按 project_id 圈会话）；失配落 global。"""
     want = _norm_dir(directory)
@@ -198,16 +207,21 @@ def apply_write(plan: dict) -> str:
             slug = f"{_slugify(s['title'])[:56]}-{n}"
             n += 1
         if exists:
+            if plan["action"] == "create":
+                # force 整体重写：清旧消息/部件，否则确定性 uuid5 id 会撞主键
+                cur.execute("DELETE FROM part WHERE session_id=?", (s["id"],))
+                cur.execute("DELETE FROM message WHERE session_id=?", (s["id"],))
             cur.execute(
-                "UPDATE session SET title=?, directory=?, slug=?, time_updated=? WHERE id=?",
-                (s["title"], s["directory"], slug, now_ms, s["id"]),
+                "UPDATE session SET title=?, directory=?, path=?, slug=?, time_updated=? WHERE id=?",
+                (s["title"], s["directory"], _derived_path(s["directory"]), slug, now_ms, s["id"]),
             )
         else:
             cur.execute(
-                "INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, "
+                "INSERT INTO session (id, project_id, parent_id, slug, directory, path, title, version, "
                 "time_created, time_updated, cost, tokens_input, tokens_output, tokens_reasoning, "
-                "tokens_cache_read, tokens_cache_write, agent, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (s["id"], s["project_id"], None, slug, s["directory"], s["title"], _VERSION,
+                "tokens_cache_read, tokens_cache_write, agent, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (s["id"], s["project_id"], None, slug, s["directory"], _derived_path(s["directory"]),
+                 s["title"], _VERSION,
                  s["time_created"] or now_ms, s["time_updated"] or now_ms,
                  0.0, 0, 0, 0, 0, 0, "build",
                  json.dumps({"id": plan.get("model") or "imported", "providerID": "opencode",

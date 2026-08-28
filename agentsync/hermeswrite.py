@@ -120,7 +120,11 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
         for i, t in enumerate(turns):
             rows += _turn_rows(sess, t, i, created_s)
         plan["session_row"] = {
-            "id": sid, "source": "",  # hermes NOT NULL 无默认列（agentctxsync 同款补法）
+            "id": sid, "source": "cli",  # NOT NULL 无默认；'cli' 对齐原生
+            # 列表 UI 的「N条消息」读这三个计数列，缺省全 0（实测坑）
+            "message_count": len(rows),
+            "tool_call_count": sum(1 for r in rows if r.get("role") == "tool"),
+            "api_call_count": sum(1 for r in rows if r.get("role") == "assistant"),
             "title": title or (turns[0].prompt[:40] if turns else ""),
             "cwd": sess.cwd or os.path.expanduser("~"),
             "started_at": created_s, "ended_at": created_s + len(rows) * 0.01,
@@ -161,6 +165,15 @@ def apply_write(plan: dict) -> str:
             cols = ", ".join(m2)
             ph = ", ".join(["?"] * len(m2))
             cur.execute(f"INSERT INTO messages ({cols}) VALUES ({ph})", list(m2.values()))
+        # 计数列始终以 messages 实测值刷新（追加后也不会失真）
+        cur.execute(
+            "UPDATE sessions SET "
+            "message_count=(SELECT COUNT(*) FROM messages WHERE session_id=?1), "
+            "tool_call_count=(SELECT COUNT(*) FROM messages WHERE session_id=?1 AND role='tool'), "
+            "ended_at=COALESCE((SELECT MAX(timestamp) FROM messages WHERE session_id=?1), ended_at) "
+            "WHERE id=?1",
+            (sid,),
+        )
         con.commit()
         return f"{plan['action']} {len(plan['rows'])} message rows -> {plan['path']} ({sid[:8]})"
     finally:

@@ -116,6 +116,46 @@ def _turn_lines(sess: Session, turn, idx: int, base_ms: int) -> list[str]:
     return lines
 
 
+_META_CACHE: dict[str, dict | None] = {}
+
+
+def _native_base_instructions(sessions_root: str) -> dict | None:
+    """从本机原生 rollout 抄 base_instructions（与 CLI 版本一致的自述词，实测缺它 resume
+    选择器不认外来会话）。"""
+    if sessions_root in _META_CACHE:
+        return _META_CACHE[sessions_root]
+    found = None
+    for p in sorted(glob.glob(os.path.join(sessions_root, "**", "*.jsonl"), recursive=True), key=os.path.getmtime, reverse=True):
+        try:
+            payload = (json.loads(open(p, encoding="utf-8", errors="replace").readline()) or {}).get("payload") or {}
+        except (OSError, ValueError):
+            continue
+        if isinstance(payload.get("base_instructions"), dict):
+            found = payload["base_instructions"]
+            break
+    _META_CACHE[sessions_root] = found
+    return found
+
+
+def _meta_line(sessions_root: str, lid: str, sess: Session, created: int) -> str:
+    """session_meta 对齐原生字段集（originator/cli_version/source/thread_source/
+    base_instructions 缺一不可，极简 meta 会被 resume 选择器无视）。"""
+    payload = {
+        "id": lid,
+        "timestamp": _iso(created),
+        "cwd": sess.cwd or os.path.expanduser("~"),
+        "originator": "codex-tui",
+        "cli_version": "0.137.0",  # 对齐本机 codex-cli；CLI 升级后建议同步
+        "source": "cli",
+        "thread_source": "user",
+        "model_provider": sess.model or "custom",
+    }
+    bi = _native_base_instructions(sessions_root)
+    if bi:
+        payload["base_instructions"] = bi
+    return json.dumps({"timestamp": _iso(created), "type": "session_meta", "payload": payload}, ensure_ascii=False)
+
+
 def plan_write(sessions_root: str, sess: Session, budget: int | None, force: bool = False, titles: dict | None = None) -> dict:
     """codex 版写入计划：create / append / up-to-date / skip / skip-deleted。
 
@@ -131,10 +171,7 @@ def plan_write(sessions_root: str, sess: Session, budget: int | None, force: boo
         "messages": 1 + sum(1 + len(s.tool_results) for t in turns for s in t.steps),
         "toolCalls": sum(len(s.tool_calls) for t in turns for s in t.steps),
     }
-    meta_line = _line("session_meta", created, {
-        "id": lid, "session_id": lid, "timestamp": _iso(created),
-        "model_provider": sess.model or "unknown", **({"cwd": sess.cwd} if sess.cwd else {}),
-    })
+    meta_line = _meta_line(sessions_root, lid, sess, created)
     plan = {"path": path, "meta_line": meta_line, "lines": [], "stats": stats, "trimmed": trimmed,
             "sourceTurns": len(turns)}
     if not turns:

@@ -624,7 +624,9 @@ def cmd_selftest(args):
     from agentsync.readers import read_claude, read_codex, read_hermes
 
     cx_root = os.path.join(box, "codex-root")
-    check(codexwrite.plan_write(cx_root, fake(), None)["action"] == "create", "codex：计划 create")
+    plan = codexwrite.plan_write(cx_root, fake(), None)
+    check(plan["action"] == "create" and "codex-tui" in plan["meta_line"] and '"source": "cli"' in plan["meta_line"],
+          "codex：计划 create 且 meta 含原生字段集")
     codexwrite.apply_write(codexwrite.plan_write(cx_root, fake(), None))
     back = read_codex(cx_root)
     check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好"
@@ -653,7 +655,8 @@ def cmd_selftest(args):
     os.makedirs(os.path.dirname(hm_db), exist_ok=True)
     con = sqlite3.connect(hm_db)
     con.executescript(
-        "CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT DEFAULT '', title TEXT, cwd TEXT, started_at REAL, ended_at REAL, model TEXT, archived INTEGER DEFAULT 0);"
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT DEFAULT 'cli', title TEXT, cwd TEXT, started_at REAL, ended_at REAL, model TEXT, archived INTEGER DEFAULT 0, "
+        "message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0, api_call_count INTEGER DEFAULT 0);"
         "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL, reasoning TEXT);"
     )
     con.commit()
@@ -662,6 +665,10 @@ def cmd_selftest(args):
     hermeswrite.apply_write(hermeswrite.plan_write(hm_db, fake(), None))
     back = read_hermes(hm_db)
     check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "hermes：读回提问")
+    con = sqlite3.connect(hm_db)
+    mc = con.execute("SELECT message_count, tool_call_count, source FROM sessions").fetchone()
+    con.close()
+    check(mc[0] >= 2 and mc[2] == "cli", "hermes：计数列已填（列表 UI 的「N条消息」数据源）")
     hermeswrite.apply_write(hermeswrite.plan_write(hm_db, fake(v2=True), None))
     back2 = read_hermes(hm_db)
     check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "hermes：追加后含工具调用")
@@ -726,6 +733,10 @@ def cmd_selftest(args):
     p1 = opencodewrite.plan_write(ocw_db, fake(), None)
     check(p1["action"] == "create", "opencode：计划 create")
     opencodewrite.apply_write(p1)
+    con = sqlite3.connect(ocw_db)
+    oc_path_col = con.execute("SELECT path FROM session").fetchone()[0]
+    con.close()
+    check(oc_path_col == "SelfTest", "opencode：path 派生列已填（桌面列表可见性）")
     back = read_opencode(ocw_db)
     check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "opencode：读回提问")
     p2 = opencodewrite.plan_write(ocw_db, fake(v2=True), None)
@@ -734,6 +745,10 @@ def cmd_selftest(args):
     check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls and back2[0].turns[1].steps[0].tool_results),
           "opencode：工具调用+回传往返（input/output 同 part）")
     check(opencodewrite.plan_write(ocw_db, fake(v2=True), None)["action"] == "up-to-date", "opencode：三次 up-to-date")
+    pf = opencodewrite.plan_write(ocw_db, fake(v2=True), None, force=True)
+    opencodewrite.apply_write(pf)
+    backf = read_opencode(ocw_db)
+    check(len(backf[0].turns) == 2 and len(backf[0].turns) == 2, "opencode：force 重写不重复（清旧消息）")
 
     wb_home = os.path.join(box, "wb-home")
     os.makedirs(os.path.join(wb_home, "projects"), exist_ok=True)
