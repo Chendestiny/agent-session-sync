@@ -2,17 +2,18 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-把 **codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode** 七家的会话记录归一到 **dsh**：
-任何一家的历史会话都可以导入 dsh **继续对话**，并可导出统一的 **Markdown 归档**。
-**其他agent 只出不进**（仅作为读取源；写入方向已移除——双端同对话易混乱，且实测活库写入
-存在时间/渲染兼容问题）。
+七家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode**。
+任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
+单向归一（A→C→B：7 读 + 6 写，而非 7×6 条直连）；**zcode 只出不进**（实测活库写入
+存在时间/渲染兼容问题，写入器已存档）。
 
 ```
-codex CLI ─┐
-hermes    ─┤
-dsh       ─┼─→ 归一化 IR（turns）─→ dsh   （可续聊，幂等+增量）
-zcode     ─┤                    ─→ Markdown 归档（浏览/搜索）
-workbuddy ─┘
+codex CLI ─┐                                ─→ dsh（可续聊，幂等+增量）
+hermes    ─┤                                ─→ codex / claude code / hermes / opencode / workbuddy
+dsh       ─┼─→ 归一化 IR（turns）──────────┼─→ Markdown 归档（浏览/搜索）
+zcode     ─┤    （规范库 ~/.session-sync，pull/push 断点续推）
+workbuddy ─┤
+claude / opencode ─┘
 ```
 
 设计参考 [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import)（MIT，dsh 插件，

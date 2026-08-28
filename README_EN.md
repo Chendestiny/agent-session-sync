@@ -2,17 +2,18 @@
 
 [简体中文](./README.md) | **English**
 
-Consolidate chat sessions from **codex / hermes / dsh (DeepSeek Harness) / zcode / workbuddy / claude code / opencode**
-into **dsh** — any historical session can be imported into dsh and **continued**, plus a unified
-**Markdown archive**. One-way by design: zcode acts as a read-only source (the write direction was
-removed — mirrored conversations on both sides get messy, and live-db writes showed rendering issues).
+Cross-agent sessions across **codex / hermes / dsh (DeepSeek Harness) / zcode / workbuddy / claude code / opencode** —
+any historical session can be imported into any of the others and **continued**, plus a unified
+**Markdown archive**. One-way consolidation (A→C→B: 7 readers + 6 writers, not 7×6 direct pairs);
+**zcode is read-only** (live-db writes showed rendering issues; that writer is archived).
 
 ```
-codex CLI ─┐
-hermes    ─┤
-dsh       ─┼─→ Normalized IR (turns) ─→ dsh        (resumable, idempotent + incremental)
-zcode     ─┤                          ─→ Markdown archive (browse & search)
-workbuddy ─┘
+codex CLI ─┐                                  ─→ dsh        (resumable, idempotent + incremental)
+hermes    ─┤                                  ─→ codex / claude code / hermes / opencode / workbuddy
+dsh       ─┼─→ Normalized IR (turns) ────────┼─→ Markdown archive (browse & search)
+zcode     ─┤    (canonical store ~/.session-sync, resumable pull/push)
+workbuddy ─┤
+claude / opencode ─┘
 ```
 
 > Only dsh is written to. Writing hermes risks cross-process lock contention; codex has been
