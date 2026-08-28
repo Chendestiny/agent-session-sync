@@ -132,6 +132,16 @@ session/imported(ignorable) → user/message 环境声明(source.kind=plugin，U
   没有条目 → 列表回退显示工作区名，点开后才有标题。`attach-dsh` 现在会同步回填
   title 行（行 schema 宽松：`rows` 任意子集合法，最小回填 = identity{createdAt,cwd} +
   `title: {ver:1, seq:<title事件seq>, val:<标题>}`；ver 需与本机 dsh 写入值一致）。
+- **identity-check 是缓存的生死门（实测踩坑）**：cachedSnapshot 按
+  `identity{createdAt, cwd}` 与**当前会话头**做严格比对，失配则**拒绝整条记录**
+  （不只是 title——整个 projections 块都无）。典型触发：force 重写/兜底后 header 的
+  cwd 变了（如 `_no-cwd` → home），而 projcache 旧条目还是 dsh 在旧文件时代写的
+  identity（`createdAt=None, cwd=None`）→ 数据四层全对但侧栏无标题。
+  `attach-dsh` 的回填已同步校验并刷新失配 identity；存量修复用 `scripts/fix_identity.py`。
+- 验证侧栏真实数据可直接调 dsh web 的 RPC（实测可用）：
+  `POST http://127.0.0.1:3080/api/session.list`，
+  body `{"type":"client-request","rpcId":"r1","method":"session.list","payload":{"args":{}}}`，
+  检查 items[].projections.values.title。
 
 ## 7. 读取规则（本工具 reader）
 

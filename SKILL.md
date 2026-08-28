@@ -1,4 +1,4 @@
----
+﻿---
 name: session-sync
 description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent → dsh 单向 + Markdown 归档）。当用户要"同步会话 / 导入会话 / 迁移会话 / 把 X 的会话搬到 Y / 归档会话 / 在 dsh 里继续另一家的会话"时使用。本目录即完整工具包：sync.py 为 CLI，AGENTS.md 为完整操作手册。
 ---
