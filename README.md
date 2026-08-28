@@ -1,6 +1,6 @@
 ﻿# 🔄 跨 Agent 同步会话（agentsync）
 
-简体中文 | [English](./README_EN.md)
+📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
 把 **codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy** 五家的会话记录归一到 **dsh**：
 任何一家的历史会话都可以导入 dsh **继续对话**，并可导出统一的 **Markdown 归档**。
@@ -18,12 +18,12 @@ workbuddy ─┘
 设计参考 [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import)（MIT，dsh 插件，
 见 `reference/`），写入规格按本机安装的 dsh 0.1.1-rc / zcode 0.16.x 逐字段逆向核实。
 
-## 前置条件
+## 📋 前置条件
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，
-`tools/verify-dsh-backend.cmd` 会自动优先选 nvm 的 22.x，无需手动切换）。
+`🛠️ tools/verify-dsh-backend.cmd` 会自动优先选 nvm 的 22.x，无需手动切换）。
 
 ## 🚀 快速开始
-### 对任意 agent 一句话开始（零手动配置）
+### 🗣️ 对任意 agent 一句话开始（零手动配置）
 把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
 
 ```text
@@ -40,7 +40,7 @@ workbuddy ─┘
 同步会话：把各 agent 的会话全量增量导入 dsh，先跑 selftest 和 verify 自检
 ```
 
-## 💬 其他扩展
+## 💬 更多触发语句
 
 ```text
 把 demo 项目工作区里的 hermes 会话也同步进 dsh
@@ -77,7 +77,7 @@ pip install zstandard && python sync.py selftest
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
 
-## 具体脚本
+## ⌨️ 具体脚本
 ```bash
 cd "<项目目录>"
 pip install zstandard        # Python 侧唯一第三方依赖
@@ -107,7 +107,7 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 
 ## 🧩 作为 skill 使用（整目录即 skill bundle）
 
-本目录本身就是 skill 包（`SKILL.md` + `sync.py` + `agentsync/` + `tools/` + `docs/`），
+本目录本身就是 skill 包（`SKILL.md` + `sync.py` + `📦 agentsync/` + `🛠️ tools/` + `docs/`），
 用 junction 链接到 skills 目录（免管理员权限）：
 
 ```bat
@@ -124,11 +124,11 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 
 以下能力均在真实数据上验证通过后发布（方法见各文档，可在你机器复跑）：
 
-- 跨 agent 读取：codex / hermes / dsh / zcode / workbuddy 全部解析正常（含工具调用、reasoning、失败态、图片占位）
-- dsh 写入：使用 dsh 自带 JsonlSessionPersistence 后端读回校验 100% 通过（tools/verify-dsh-backend.cmd 可复跑）
-- 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
-- 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
-- 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
+- ✅ 跨 agent 读取：codex / hermes / dsh / zcode / workbuddy 全部解析正常（含工具调用、reasoning、失败态、图片占位）
+- ✅ dsh 写入：使用 dsh 自带 JsonlSessionPersistence 后端读回校验 100% 通过（🛠️ tools/verify-dsh-backend.cmd 可复跑）
+- ✅ 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
+- ✅ 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
+- ✅ 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
 ### ⚠️ 踩坑记录（都已修进代码 + 文档）
 
 | 坑                                         | 现象                                                  | 修复                                                                                                                          |
@@ -145,18 +145,18 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 ## 📂 目录结构
 
 ```
-AGENTS.md               AI agent 操作手册（交给 agent 读的入口）
-SKILL.md                skill 封装（整目录即 skill bundle，junction 到 skills 目录）
-sync.py                 CLI 入口（status/to-dsh/attach-dsh/archive/verify/selftest）
+📖 AGENTS.md            AI agent 操作手册（交给 agent 读的入口）
+🧩 SKILL.md             skill 封装（整目录即 skill bundle，junction 到 skills 目录）
+⌨️ sync.py              CLI 入口（status/to-dsh/attach-dsh/archive/verify/selftest）
 titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-dsh --force --titles 重写）
-docs/FORMATS.md         格式总览 + 归一化 IR + 索引
-docs/agents/            各家会话结构详解（深度规格分册）
+📐 docs/FORMATS.md      格式总览 + 归一化 IR + 索引
+🔬 docs/agents/         各家会话结构详解（深度规格分册）
   dsh.md  zcode.md  hermes.md  codex.md  workbuddy.md
-examples/               真实示例：命令输出转录 + 转换实例（含再生成方法）
-tools/
+📑 examples/            真实示例：命令输出转录 + 转换实例（含再生成方法）
+🛠️ tools/
   verify-dsh-backend.mjs   dsh 原生后端读回校验（Node 22+，先 nvm use 22）
   verify-dsh-backend.cmd   上者的 Windows 包装器（自动选 nvm 22.x）
-agentsync/
+📦 agentsync/
   paths.py              五家存储定位 + zcode project_id 规则
   model.py              归一化 IR + token 估算 + 三层预算裁剪
   readers.py            五家读取器（全部只读）
@@ -164,15 +164,15 @@ agentsync/
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档
   validate.py           dsh 事件纪律校验
-archive/                归档输出
-reference/dsh-chat-import/  参考仓库源码
+🗂️ archive/             归档输出
+📚 reference/dsh-chat-import/  参考仓库源码
 .test-dsh-root/ .test-zcode-db.sqlite   测试产物（可删）
 ```
 
 ## 🔒 安全边界
 
-- 读取永远只读（sqlite `mode=ro` URI）。
-- 写 dsh：只新增 `import-*` 会话目录，不触碰原生会话文件。
-- **不写 zcode/hermes/codex/workbuddy 的存储**（zcode 写入方向已于 2026-08-26 移除）。
-- 恢复方法：zcode db 异常时，用 `db.sqlite.cleanup-bak-*` / `db.sqlite.agentsync-bak-*`
+- 🔍 读取永远只读（sqlite `mode=ro` URI）。
+- ✏️ 写 dsh：只新增 `import-*` 会话目录，不触碰原生会话文件。
+- 🚫 **不写 zcode/hermes/codex/workbuddy 的存储**（zcode 写入方向已于 2026-08-26 移除）。
+- ♻️ 恢复方法：zcode db 异常时，用 `db.sqlite.cleanup-bak-*` / `db.sqlite.agentsync-bak-*`
   覆盖回原文件（需退出 zcode）。
