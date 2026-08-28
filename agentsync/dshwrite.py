@@ -326,9 +326,16 @@ def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
 
     for path in sorted(_glob.glob(os.path.join(str(dsh_root), "*", "import-*", "session.jsonl*"))):
         sid = os.path.basename(os.path.dirname(path))
-        old_row = (existing.get(sid, {}).get("rows") or {}).get("title")
-        if old_row is not None and old_row.get("val") == title_of(path, sid):
-            continue  # 已有 title 投影且与日志一致（点开过/已回填/已刷新）
+        old = existing.get(sid, {})
+        old_row = (old.get("rows") or {}).get("title")
+        old_ident = old.get("identity") or {}
+        # 跳过条件（两者都满足才跳）：title 行与日志一致 **且** identity 与当前 header 一致。
+        # identity 失配的条目（如 force 重写/兜底后 cwd 变化，dsh 侧 cachedSnapshot 会
+        # 因 identity-check 拒绝整条记录 → 侧栏无标题），必须以新 identity 重建条目。
+        if old_row is not None and old_ident.get("createdAt") is not None:
+            t = title_of(path, sid)
+            if old_row.get("val") == t:
+                continue  # title 与日志一致；identity 由下方 header 校验兜底
         try:
             header, events = read_log_events(path)
         except Exception:
@@ -344,10 +351,13 @@ def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
         identity = {"createdAt": header.get("createdAt", 0)}
         if header.get("cwd") is not None:
             identity["cwd"] = header["cwd"]
-        backfill[sid] = {
-            "identity": identity,
-            "rows": {"title": {"ver": TITLE_ROW_VER, "seq": title_ev.get("seq", 0), "val": title}},
-        }
+        # identity 失配但 title 一致的：只刷 identity（保留原 rows 的其他行）
+        if old_ident.get("createdAt") == identity.get("createdAt") and old_ident.get("cwd") == identity.get("cwd") \
+                and old_row is not None and old_row.get("val") == title:
+            continue
+        merged_rows = dict(old.get("rows") or {})
+        merged_rows["title"] = {"ver": TITLE_ROW_VER, "seq": title_ev.get("seq", 0), "val": title}
+        backfill[sid] = {"identity": identity, "rows": merged_rows}
     return {"backfill": backfill, "projcache": pc, "pc_path": pc_path}
 
 
