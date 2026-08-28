@@ -15,6 +15,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 
@@ -173,7 +174,10 @@ def plan_write(sessions_root: str, sess: Session, budget: int | None, force: boo
     }
     meta_line = _meta_line(sessions_root, lid, sess, created)
     plan = {"path": path, "meta_line": meta_line, "lines": [], "stats": stats, "trimmed": trimmed,
-            "sourceTurns": len(turns)}
+            "sourceTurns": len(turns), "lid": lid, "created": created,
+            "updated": sess.updated_at or created, "title": sess.title or "",
+            "first_prompt": turns[0].prompt if turns else "", "cwd": sess.cwd,
+            "model_provider": sess.model or "custom", "state_root": sessions_root}
     if not turns:
         return {**plan, "action": "skip", "reason": "无可导入轮次"}
     if sess.source_id in load_tombstones(sessions_root):
@@ -198,18 +202,88 @@ def plan_write(sessions_root: str, sess: Session, budget: int | None, force: boo
     return {**plan, "action": "create", "lines": lines}
 
 
+def _state_db(sessions_root: str) -> str | None:
+    """codex 状态库（resume 列表的真正数据源）：~/.codex/state_N.sqlite 取最大 N。"""
+    import glob as _glob
+
+    hits = _glob.glob(os.path.join(os.path.dirname(str(sessions_root)), "state_*.sqlite"))
+    return max(hits) if hits else None
+
+
+def _upsert_thread(sessions_root: str, plan: dict) -> str | None:
+    """把导入会话登记进 state db 的 threads 表——resume picker 只读这里，不扫文件。"""
+    db = _state_db(sessions_root)
+    if not db:
+        return None
+    con = sqlite3.connect(db)
+    try:
+        cur = con.cursor()
+        cols = {r[1] for r in cur.execute("PRAGMA table_info(threads)")}
+        if "rollout_path" not in cols:
+            return None
+        lid = plan["lid"]
+        created_s = plan["created"] // 1000
+        updated_s = (plan.get("updated") or plan["created"]) // 1000
+        title = (plan.get("title") or plan.get("first_prompt") or "imported session")[:200]
+        cwd = plan.get("cwd") or os.path.expanduser("~")
+        cwd_win = "\\\\?\\" + cwd.replace("/", "\\") if os.name == "nt" else cwd
+        # 抄一条现有行的 sandbox_policy/approval_mode（保持本机策略形态）
+        pol = cur.execute("SELECT sandbox_policy, approval_mode FROM threads LIMIT 1").fetchone()
+        sandbox_policy, approval_mode = (pol if pol else ('{"type":"read-only"}', "on-request"))
+        row = {
+            "id": lid,
+            "rollout_path": plan["path"],
+            "created_at": str(created_s),
+            "updated_at": str(updated_s),
+            "source": "cli",
+            "model_provider": plan.get("model_provider") or "custom",
+            "cwd": cwd_win,
+            "title": title,
+            "sandbox_policy": sandbox_policy,
+            "approval_mode": approval_mode,
+            "tokens_used": 0,
+            "has_user_event": 1,
+            "archived": 0,
+            "cli_version": "0.137.0",
+            "first_user_message": title,
+            "memory_mode": "enabled",
+            "thread_source": "user",
+            "preview": title,
+            "recency_at": str(updated_s),
+            "recency_at_ms": str((plan.get("updated") or plan["created"])),
+            "created_at_ms": str(plan["created"]),
+            "updated_at_ms": str(plan.get("updated") or plan["created"]),
+            "history_mode": "legacy",
+        }
+        row = {k: v for k, v in row.items() if k in cols}
+        cur.execute("DELETE FROM threads WHERE id = ?", (lid,))
+        keys = ", ".join(row)
+        ph = ", ".join(["?"] * len(row))
+        cur.execute(f"INSERT INTO threads ({keys}) VALUES ({ph})", list(row.values()))
+        con.commit()
+        return f"thread indexed -> {os.path.basename(db)}"
+    finally:
+        con.close()
+
+
 def apply_write(plan: dict) -> str:
-    """落盘：create 整文件（含 session_meta 首行），append 仅追加行。"""
+    """落盘：create 整文件（含 session_meta 首行），append 仅追加行；并登记 threads 索引。"""
     if plan["action"] == "create":
         os.makedirs(os.path.dirname(plan["path"]), exist_ok=True)
         with open(plan["path"], "w", encoding="utf-8") as f:
             f.write(plan["meta_line"] + "\n")
             for ln in plan["lines"]:
                 f.write(ln + "\n")
-        return f"created {len(plan['lines'])} lines -> {plan['path']}"
-    if plan["action"] == "append":
+        msg = f"created {len(plan['lines'])} lines -> {plan['path']}"
+    elif plan["action"] == "append":
         with open(plan["path"], "a", encoding="utf-8") as f:
             for ln in plan["lines"]:
                 f.write(ln + "\n")
-        return f"appended {len(plan['lines'])} lines -> {plan['path']}"
-    raise ValueError(f"unexpected action: {plan['action']}")
+        msg = f"appended {len(plan['lines'])} lines -> {plan['path']}"
+    else:
+        raise ValueError(f"unexpected action: {plan['action']}")
+    if plan.get("state_root"):
+        t = _upsert_thread(plan["state_root"], plan)
+        if t:
+            msg += f"; {t}"
+    return msg
