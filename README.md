@@ -182,6 +182,10 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 | 会话 id 命中归档列表                       | 数据四层全对但侧栏不渲染（删除→同 id 复活即隐身）     | prune/删除同步清 archivedSessionIds；复活历史归档需手工移除 id                                                                |
 | 双向同步导致两边列表污染                   | 同一会话两边各一份，续聊即分叉                        | 产品决策改为单向：跨 agent → dsh；to-zcode 移除，写入器存档                                                                   |
 | zcode 写入每会话备份一次                   | 一次导入产生百余个全量备份（23GB）                    | 已改为每次运行备份一次；存量备份已清理                                                                                        |
+| codex resume 列表不认外来 rollout         | 文件落位但 picker 只显示原生会话                      | 0.137 的列表读 `~/.codex/state_N.sqlite` 的 threads 索引；写入器落盘时同步登记 threads 行                                     |
+| hermes 列表显示「0条消息」                | 消息行在库里、格式也对，但 UI 计数为 0                | 列表读 sessions 表计数列；写入器填 message_count/tool_call_count/source 并在追加后实测刷新                                    |
+| opencode 桌面看不到导入会话               | db 三表全对但列表空                                  | 桌面按当前项目上下文圈列表：补 `path` 派生列（directory 去盘符）+ directory 对齐默认项目上下文（取最近原生会话）              |
+| claude 命令坏 shim                         | `claude` 报 claude.exe 不存在                         | 本机可用入口 `~\bin\claude.exe`；删 Program Files\nodejs 下三个 stale shim 可根治（需管理员）                                 |
 
 ## 📂 目录结构
 

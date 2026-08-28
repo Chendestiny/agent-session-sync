@@ -45,7 +45,7 @@ python sync.py attach-dsh --apply                                           # �
 |---|---|
 | 看各 agent 源概览 | `python sync.py status` |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
-| 反向写入 codex / claude code / hermes / opencode / workbuddy | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy}write.py；zcode 不可写） |
+| 反向写入 codex / claude code / hermes / opencode / workbuddy | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy}write.py；zcode 不可写）。**六目标已实测全通**（每家的可见性坑都已固化修复：codex 需登记 state_N.sqlite threads 索引、hermes 需计数列、opencode 需 path 列+对齐默认项目上下文） |
 | 规范库（A→C→B 架构） | `python sync.py pull --source all --scope inc`（各源→~/.session-sync，只读源安全免退出）→ `python sync.py push --target dsh\|codex\|claude\|hermes --source all --scope inc --apply`（C→目标，幂等断点续推，中途换 agent 重跑即续；与直通 to-X 共享幂等 id，混用不重复） |
 | 挂工作区分组 + 标题预投影 | **退出 dsh 后** `python sync.py attach-dsh --apply`（改 workspace.json + 回填 projcache title 行，均先备份） |
 | 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json --budget 550000` → 重启 dsh |

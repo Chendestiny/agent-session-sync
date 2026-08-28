@@ -40,6 +40,19 @@ def _norm_dir(d: str) -> str:
     return (d or "").replace("\\", "/").rstrip("/").lower()
 
 
+def _default_context(cur) -> str:
+    """桌面默认项目上下文（实测：桌面按当前项目圈会话列表，导入会话对齐它才可见）：
+    取最近一条原生会话的 directory；无则 ~/Documents/Default Project；再退 ~。"""
+    try:
+        r = cur.execute("SELECT directory FROM session ORDER BY time_updated DESC LIMIT 1").fetchone()
+        if r and r[0]:
+            return r[0]
+    except sqlite3.OperationalError:
+        pass
+    dp = os.path.expanduser("~/Documents/Default Project")
+    return dp if os.path.isdir(dp) else os.path.expanduser("~")
+
+
 def _derived_path(directory: str) -> str:
     """原生规律（真库实证）：path = directory 去掉盘符前缀（'C:/Users/x' → 'Users/x'）。
     桌面版按 path/project 圈会话列表，缺它外来会话不显示。"""
@@ -170,7 +183,8 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
         plan["existingTurns"] = have
         if exists and have >= len(turns) and not force:
             return {**plan, "action": "up-to-date"}
-        directory = (sess.cwd or os.path.expanduser("~")).replace("\\", "/")
+        # 对齐桌面默认项目上下文（源 cwd 不直接当 directory，否则不在当前项目视图里不显示）
+        directory = _default_context(cur)
         plan["session_row"] = {
             "id": sid,
             "project_id": _resolve_project(cur, directory),

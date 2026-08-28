@@ -734,9 +734,10 @@ def cmd_selftest(args):
     check(p1["action"] == "create", "opencode：计划 create")
     opencodewrite.apply_write(p1)
     con = sqlite3.connect(ocw_db)
-    oc_path_col = con.execute("SELECT path FROM session").fetchone()[0]
+    oc_dir, oc_path_col = con.execute("SELECT directory, path FROM session").fetchone()
     con.close()
-    check(oc_path_col == "SelfTest", "opencode：path 派生列已填（桌面列表可见性）")
+    check(bool(oc_path_col) and oc_path_col == opencodewrite._derived_path(oc_dir),
+          "opencode：path 派生列与 directory 一致（桌面列表可见性）")
     back = read_opencode(ocw_db)
     check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "opencode：读回提问")
     p2 = opencodewrite.plan_write(ocw_db, fake(v2=True), None)
