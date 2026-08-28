@@ -41,6 +41,17 @@ Linux / macOS / WSL：
 > WSL/Linux 下自动只发现**该系统内**安装的 agent（如 `~/.codex`、`~/.dsh`）；
 > zcode / hermes / workbuddy 装在 Windows 侧的，请在 Windows 上跑同步。
 
+### ▶️ 执行同步（装完对 agent 说一句）
+安装脚本（含下面的离线办法）会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
+
+```text
+用 session-sync skill 同步会话到 dsh，按它的纪律跑完闭环
+```
+或者
+```text
+同步会话：把各 agent 的会话全量增量导入 dsh，先跑 selftest 和 verify 自检
+```
+
 ### 🐌 GitHub 访问慢 / 不能翻墙？
 
 **办法一：手动下载 zip（最稳，安装过程零联网）**
@@ -62,16 +73,6 @@ $env:ASS_GH_PREFIX = 'https://ghfast.top/'; irm https://raw.githubusercontent.co
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.sh | ASS_GH_PREFIX=https://ghfast.top/ bash
-```
-
-安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
-
-```text
-用 session-sync skill 同步会话到 dsh，按它的纪律跑完闭环
-```
-或者
-```text
-同步会话：把各 agent 的会话全量增量导入 dsh，先跑 selftest 和 verify 自检
 ```
 
 ## 💬 更多触发语句

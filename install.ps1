@@ -1,22 +1,22 @@
-﻿#Requires -Version 5.1
-<#
-agent-session-sync 一键安装（跨 Agent 会话同步：codex/hermes/dsh/zcode/workbuddy -> dsh）
-用法（任意 agent 或终端）：
-  在线：irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
-  离线（GitHub 访问慢/不可达）：浏览器下载 zip 解压，进入 agent-session-sync-main 目录执行
-        powershell -ExecutionPolicy Bypass -File .\install.ps1
-        （脚本检测到旁边的 sync.py 就直接本地落位，不再联网）
-  也可显式指定来源（zip 文件或已解压目录）：
-        .\install.ps1 -Source C:\Downloads\agent-session-sync-main.zip
-  加速镜像前缀（可选，拼在 GitHub 下载地址前面）：
-        $env:ASS_GH_PREFIX = 'https://ghfast.top/'
-效果：
-  1. 工具包落位 %USERPROFILE%\.agents\skills\session-sync（旧版自动备份为 .bak-<时间戳>）
-  2. 注册为 skill，各 agent 可用「同步会话」一句话触发
-  3. 检查 python / zstandard 环境并给出提示
-#>
+# agent-session-sync installer (cross-agent session sync: codex/hermes/dsh/zcode/workbuddy -> dsh)
+# Usage (any agent or terminal):
+#   Online:  irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
+#   Offline (slow/blocked GitHub): download the repo zip, extract, then inside agent-session-sync-main run
+#            powershell -ExecutionPolicy Bypass -File .\install.ps1
+#            (sync.py next to the script -> local install, zero network)
+#   Explicit source: .\install.ps1 -Source <path to repo zip OR extracted folder>
+#   Mirror prefix (optional, prepended to the GitHub download URL):
+#            $env:ASS_GH_PREFIX = 'https://ghfast.top/'
+# Effects:
+#   1. Toolkit lands in %USERPROFILE%\.agents\skills\session-sync (old copy backed up as .bak-<timestamp>)
+#   2. Registers as a skill: say "sync sessions" (or Chinese) to any agent to trigger
+#   3. Checks python / zstandard and prints hints
+# NOTE: keep this file ASCII-only and BOM-less. It must survive `irm | iex` on both
+#       PowerShell 5.1 and PowerShell 7, where a UTF-8 BOM glues onto the first token
+#       and breaks parsing. Chinese docs live in README.md / SKILL.md / AGENTS.md.
 param(
-    # 可选：本地 zip 或已解压目录（离线安装）。留空则自动：脚本旁有 sync.py 就地安装，否则在线下载。
+    # Optional: local zip or extracted folder (offline install). Empty = auto:
+    # use the copy beside this script if sync.py is there, otherwise download.
     [string]$Source
 )
 $ErrorActionPreference = 'Stop'
@@ -28,45 +28,54 @@ $tmpDir = Join-Path $env:TEMP ('ass-' + [guid]::NewGuid().ToString('N'))
 $prefix = [string]$env:ASS_GH_PREFIX
 $url = 'https://github.com/Chendestiny/agent-session-sync/archive/refs/heads/main.zip'
 
-Write-Host '[1/3] 获取 agent-session-sync (main) ...'
+Write-Host '[1/3] Fetch agent-session-sync (main) ...'
 $srcRoot = $null
 if ($Source) {
-    if (Test-Path $Source -PathType Leaf) {              # 本地 zip
+    if (Test-Path $Source -PathType Leaf) {              # local zip
         Expand-Archive -Path $Source -DestinationPath $tmpDir -Force
-    } elseif (Test-Path $Source -PathType Container) {  # 本地目录
+    } elseif (Test-Path $Source -PathType Container) {  # local folder
         $srcRoot = (Resolve-Path $Source).Path
-        Write-Host "      使用本地目录：$srcRoot"
+        Write-Host "      Using local folder: $srcRoot"
     } else {
-        throw "来源不存在：$Source"
+        throw "Source not found: $Source"
     }
 } elseif ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'sync.py'))) {
-    $srcRoot = $PSScriptRoot                             # 解压后原地安装，不联网
-    Write-Host "      使用本地目录：$srcRoot"
+    $srcRoot = $PSScriptRoot                             # extracted-in-place install, no network
+    Write-Host "      Using local folder: $srcRoot"
 } else {
+    $dlOk = $false
     try {
         Invoke-WebRequest -Uri "$prefix$url" -OutFile $zip -UseBasicParsing
-    } catch {
-        throw "下载失败：GitHub 访问慢可手动下载 zip 后运行 .\install.ps1 -Source <zip路径>（或先 `$env:ASS_GH_PREFIX='https://ghfast.top/' 设加速前缀）"
+        $dlOk = $true
+    } catch { }
+    if (-not $dlOk -and (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
+        # corporate proxy / SSL interception fallback (Windows 10+ ships curl.exe)
+        & curl.exe -fsSL --retry 3 --ssl-no-revoke -o "$zip" "$prefix$url"
+        if ($LASTEXITCODE -eq 0) { $dlOk = $true }
     }
+    if (-not $dlOk) {
+        throw "Download failed. Download the repo zip manually and run: .\install.ps1 -Source <zip path> (or set `$env:ASS_GH_PREFIX to a mirror prefix first)"
+    }
+    Expand-Archive -Path $zip -DestinationPath $tmpDir -Force
 }
 if (-not $srcRoot) {
-    # 在解压产物中定位包含 sync.py 的目录（兼容 zip 内层目录名变化）
+    # locate the folder containing sync.py inside the extracted zip (tolerates inner folder renames)
     $hit = Get-ChildItem -Path $tmpDir -Recurse -Filter sync.py -File | Select-Object -First 1
-    if (-not $hit) { throw '来源异常：未找到 sync.py' }
+    if (-not $hit) { throw 'Unexpected content: sync.py not found' }
     $srcRoot = $hit.DirectoryName
 }
 
-Write-Host '[2/3] 落位到 skill 目录 ...'
+Write-Host '[2/3] Place into skill directory ...'
 if (-not (Test-Path (Split-Path $dest -Parent))) {
     New-Item -ItemType Directory -Path (Split-Path $dest -Parent) -Force | Out-Null
 }
 if (Test-Path $dest) {
     $bak = "$dest.bak-" + (Get-Date).ToString('yyyyMMdd-HHmmss')
     Move-Item -LiteralPath $dest -Destination $bak -Force
-    Write-Host "      旧版本已备份：$bak"
+    Write-Host "      Old version backed up: $bak"
 }
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
-# 白名单复制（只拷 skill 包需要的文件，工作副本里的运行产物/私有数据不会带入）
+# allowlist copy (only what the skill bundle needs; worktree artifacts/private data never carried over)
 $bundle = 'SKILL.md','AGENTS.md','README.md','README_EN.md','LICENSE',
           'sync.py','sync-finish.py','agentsync','docs','tools','examples','scripts',
           'install.ps1','install.sh'
@@ -77,17 +86,17 @@ foreach ($item in $bundle) {
     }
 }
 
-Write-Host '[3/3] 环境检查 ...'
-try { python --version | Write-Host } catch { Write-Host '  [!] 未检测到 python，请安装 Python 3.10+' }
+Write-Host '[3/3] Environment check ...'
+try { python --version | Write-Host } catch { Write-Host '  [!] python not found, please install Python 3.10+' }
 try {
     python -c "import zstandard" 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Host '  [!] 缺少 zstandard：请执行 pip install zstandard' }
-} catch { Write-Host '  [!] 未检测到 python，请安装 Python 3.10+' }
+    if ($LASTEXITCODE -ne 0) { Write-Host '  [!] zstandard missing: run  pip install zstandard' }
+} catch { Write-Host '  [!] python not found, please install Python 3.10+' }
 Remove-Item $zip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
-Write-Host '安装完成！'
-Write-Host ("  目录：{0}" -f $dest)
-Write-Host '  自检：cd 到该目录后执行 python sync.py selftest'
-Write-Host '  触发：对任意 agent 说「同步会话」或「把 hermes 会话同步到 dsh」'
-Write-Host '  注意：to-zcode 方向已移除（单向设计）；写入前 attach/prune 需退出 dsh'
+Write-Host 'Install done!'
+Write-Host ("  Location: {0}" -f $dest)
+Write-Host '  Self-test: cd there and run  python sync.py selftest'
+Write-Host '  Trigger: tell any agent "sync sessions to dsh"'
+Write-Host '  Note: to-zcode direction is removed (one-way design); exit dsh before attach/prune'
