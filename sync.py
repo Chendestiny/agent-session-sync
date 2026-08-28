@@ -324,6 +324,27 @@ def cmd_selftest(args):
     plan3 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan3["action"] == "up-to-date", "三次执行为 up-to-date（幂等）")
 
+    # 标题投影回填（projcache title 行 + identity 校验）
+    pc_dir = os.path.join(box, "storages")
+    os.makedirs(pc_dir, exist_ok=True)
+    pc_path = os.path.join(pc_dir, "session_projcache.json")
+    with open(pc_path, "w", encoding="utf-8") as f:
+        json.dump({"ver": 1, "tables": {"sessions": {}}}, f)
+    tb = dshwrite.plan_title_backfill(dsh_root)
+    check(len(tb["backfill"]) == 1, "title 回填计划覆盖新导入")
+    dshwrite.apply_title_backfill(tb)
+    sid_key = next(iter(tb["backfill"]))
+    pc1 = json.load(open(pc_path, encoding="utf-8"))
+    check(pc1["tables"]["sessions"][sid_key]["rows"]["title"]["val"] == "[codex] 自检会话", "回填 title 值带来源前缀")
+    tb2 = dshwrite.plan_title_backfill(dsh_root)
+    check(not tb2["backfill"], "二次回填为空（幂等）")
+    # 回归：identity 失配但 title 一致 → 仍须重建条目（早期版本被 continue 跳过 → 侧栏无标题）
+    pc1["tables"]["sessions"][sid_key]["identity"] = {"createdAt": 1, "cwd": "X:\\old"}
+    with open(pc_path, "w", encoding="utf-8") as f:
+        json.dump(pc1, f)
+    tb3 = dshwrite.plan_title_backfill(dsh_root)
+    check(sid_key in tb3["backfill"], "identity 失配且 title 一致时仍重建条目（回归）")
+
     print("== 3/5 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")

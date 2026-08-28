@@ -306,6 +306,9 @@ def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
     打开/adopt 时回填——直接落盘的导入会话因此全部回退显示工作区名。
     行 schema 宽松（rows 任意子集合法），最小回填 = identity{createdAt,cwd} +
     title 行 {ver:1, seq:<title事件seq>, val:<标题>}。
+    identity 失配的条目 dsh 会整条拒绝（cachedSnapshot identity-check）→ 侧栏
+    无标题；因此 **title 一致但 identity 失配时也必须重建条目**（回归点：早期
+    版本 title 一致即 continue，跳过了 identity 校验）。
     """
     import glob as _glob
 
@@ -316,26 +319,11 @@ def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
     existing = pc.get("tables", {}).get("sessions", {})
     backfill: dict[str, dict] = {}
 
-    def title_of(p: str, sid: str):
-        try:
-            _, evs = read_log_events(p)
-            ev = next((e for e in reversed(evs) if e.get("type") == "session/title"), None)
-            return ev["data"].get("title") if ev else None
-        except Exception:
-            return None
-
     for path in sorted(_glob.glob(os.path.join(str(dsh_root), "*", "import-*", "session.jsonl*"))):
         sid = os.path.basename(os.path.dirname(path))
         old = existing.get(sid, {})
         old_row = (old.get("rows") or {}).get("title")
         old_ident = old.get("identity") or {}
-        # 跳过条件（两者都满足才跳）：title 行与日志一致 **且** identity 与当前 header 一致。
-        # identity 失配的条目（如 force 重写/兜底后 cwd 变化，dsh 侧 cachedSnapshot 会
-        # 因 identity-check 拒绝整条记录 → 侧栏无标题），必须以新 identity 重建条目。
-        if old_row is not None and old_ident.get("createdAt") is not None:
-            t = title_of(path, sid)
-            if old_row.get("val") == t:
-                continue  # title 与日志一致；identity 由下方 header 校验兜底
         try:
             header, events = read_log_events(path)
         except Exception:
@@ -351,10 +339,12 @@ def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
         identity = {"createdAt": header.get("createdAt", 0)}
         if header.get("cwd") is not None:
             identity["cwd"] = header["cwd"]
-        # identity 失配但 title 一致的：只刷 identity（保留原 rows 的其他行）
-        if old_ident.get("createdAt") == identity.get("createdAt") and old_ident.get("cwd") == identity.get("cwd") \
-                and old_row is not None and old_row.get("val") == title:
-            continue
+        ident_ok = (
+            old_ident.get("createdAt") == identity.get("createdAt")
+            and old_ident.get("cwd") == identity.get("cwd")
+        )
+        if old_row is not None and old_row.get("val") == title and ident_ok:
+            continue  # title 与 identity 均一致：无需回填
         merged_rows = dict(old.get("rows") or {})
         merged_rows["title"] = {"ver": TITLE_ROW_VER, "seq": title_ev.get("seq", 0), "val": title}
         backfill[sid] = {"identity": identity, "rows": merged_rows}
