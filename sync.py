@@ -166,6 +166,17 @@ def cmd_to_dsh(args):
     loaded = load_sources(which, p)
     # 数据量确认 → 每源增量下界（None = 不过滤：全部历史 / 首次增量）
     state = syncstate.load(root)
+    # 人工拦截：历史全量（scope=all，或 inc 首跑无基准）在 --apply 时必须显式确认——
+    # 交互弹 y/N（默认 N=取消）；非交互必须由人显式给 --confirm-history，否则拒绝。
+    full_sources = confirm.history_full_sources(scope, which, state, available=set(loaded))
+    if full_sources and args.apply and not getattr(args, "confirm_history", False):
+        if confirm.interactive():
+            if not confirm.prompt_history_confirm("'/'".join(full_sources)):
+                sys.exit("已取消：未做任何修改。")
+        else:
+            sys.exit(confirm.NONINTERACTIVE_HISTORY_HELP)
+    elif full_sources and getattr(args, "confirm_history", False):
+        print(f"⚠ 历史全量：{'+'.join(full_sources)} 已由 --confirm-history 显式确认")
     cutoffs: dict[str, int | None] = {}
     if scope["kind"] == "days":
         c = int(time.time() * 1000) - scope["days"] * 86400000
@@ -382,6 +393,15 @@ def cmd_selftest(args):
         syncstate.cutoff_for(st, "zcode") is not None and syncstate.cutoff_for(st, "hermes") is None,
         "cutoff_for：有基准取基准-重叠，无基准 None（首次=全部）",
     )
+    st_full = {"zcode": 1, "hermes": 1}
+    check(cf.history_full_sources({"kind": "all", "days": None}, ["zcode", "claude"], {}) == ["zcode", "claude"],
+          "历史拦截：scope=all 全部所选源命中")
+    check(cf.history_full_sources({"kind": "inc", "days": None}, ["zcode", "claude"], st_full) == ["claude"],
+          "历史拦截：inc 首跑无基准的源命中")
+    check(cf.history_full_sources({"kind": "inc", "days": None}, ["zcode"], st_full) == [],
+          "历史拦截：inc 有基准不命中")
+    check(cf.history_full_sources({"kind": "days", "days": 7}, ["zcode"], {}) == [],
+          "历史拦截：天数窗口（有界）不命中")
 
     print("== 5/5 claude / opencode 读取器（沙箱样本）==")
     import tempfile
@@ -472,7 +492,8 @@ def main():
 
     s = sub.add_parser("to-dsh", help="导入到 dsh（可续聊）")
     s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode；交互缺省时弹菜单")
-    s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量)|7d|30d|任意N天|all(全部历史)；交互缺省时弹菜单")
+    s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量,默认)|7d|30d|任意N天|all(全部历史,需二次确认)；交互缺省时弹菜单")
+    s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
     s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
     s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")

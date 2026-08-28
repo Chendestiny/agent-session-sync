@@ -3,9 +3,10 @@
 """一键收尾：退出 dsh 后运行一次，自动完成全部待办（无需再找 agent）。
 
 用法（退出 dsh 后）：
-    python sync-finish.py            # 全部收尾（先弹两道确认：来源区 + 数据量）
+    python sync-finish.py            # 全部收尾（先弹两道确认：来源区 + 数据量；默认仅增量）
     python sync-finish.py --check    # 只看当前状态，不动任何东西（不弹确认）
     python sync-finish.py --sources zcode,workbuddy --scope 7d   # 参数即确认（非交互）
+    python sync-finish.py --sources all --scope all --confirm-history   # 历史全量需显式确认
 
 流程：
   0. 人在回路两道确认（来源区 / 数据量；显式参数即确认）→ 检查 dsh 已退出
@@ -97,7 +98,8 @@ def main():
     print("=" * 56)
 
     a = NS(source=source_spec, scope=scope_spec, apply=not check_only, root=root,
-           budget=550000, force=False, titles=None, session=None, cwd=None, since=None, limit=None)
+           budget=550000, force=False, titles=None, session=None, cwd=None, since=None, limit=None,
+           confirm_history="--confirm-history" in sys.argv)
     S.cmd_to_dsh(a)
 
     print("=" * 56)

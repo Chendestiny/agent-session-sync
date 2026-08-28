@@ -28,6 +28,8 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
    用户在终端跑 → 自动弹两道菜单（回车有默认，q 取消）；agent 代跑（非交互）→
    **必须显式给 `--source`（all / zcode,workbuddy 等）和 `--scope`（inc/7d/30d/N天/all），
    参数即确认，缺任一命令会拒绝执行**——绝不替用户默认范围。
+   **历史全量（`--scope all` 或 inc 首跑）额外拦截**：交互弹 y/N（默认取消）；
+   非交互必须由用户显式给 `--confirm-history`——agent 绝不自行拍板全量历史。
 4. **默认 dry-run**：所有写命令先不带 `--apply` 跑一遍，把计划给用户看过再落盘。
 5. 出错就停下报告，不要猜测性重试。
 6. **attach-dsh / prune 的硬前提：dsh 必须完全退出**（含托盘/后台 node 进程）。
@@ -48,8 +50,8 @@ python sync.py to-dsh                                  # 交互终端：弹两�
 python sync.py to-dsh --source all --scope inc --apply --budget 550000   # 参数即确认（agent/脚本必给两参）
 python sync.py to-dsh --source zcode,workbuddy --scope 7d          # 组合来源 + 最近 7 天
 python sync.py to-dsh --source dsh --session <id> --scope all --apply   # 指定会话
-python sync.py to-dsh --source all --scope all --apply --force [--budget 550000]    # 修复损坏的旧导入（整体重写）
-python sync.py to-dsh --source all --scope all --apply --force --titles titles.json # 批量重命名（配合 titles.json）
+python sync.py to-dsh --source all --scope all --apply --force --confirm-history [--budget 550000]    # 修复旧导入（整体重写；历史全量需确认）
+python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json # 批量重命名（配合 titles.json）
 # dsh 完整闭环 = to-dsh --apply → 完全退出 dsh → attach-dsh --apply（分组+标题） → 启动 dsh
 python sync.py attach-dsh                              # 挂分组+回填侧栏标题缓存（--apply 前必须退出 dsh）
 python sync.py archive --source all --apply            # Markdown 归档到 ./archive
@@ -62,7 +64,8 @@ tools/verify-dsh-backend.cmd                           # dsh 原生后端强校�
 两道确认参数（to-dsh 必备；sync-finish 对应 `--sources`/`--scope`）：
 `--source all|zcode,hermes,codex,workbuddy,claude,opencode`（确认1 来源区）、
 `--scope inc|7d|30d|<N>d|all`（确认2 数据量；inc=仅增量，基准存于
-`~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠）。
+`~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠；
+all 或 inc 首跑=历史全量，`--apply` 需交互 y/N 或非交互 `--confirm-history`）。
 过滤参数（to-dsh / archive 通用）：`--session <源ID子串,逗号分隔>`、`--cwd <路径子串>`、
 `--since <天数>`、`--limit <每源数量>`。预算参数：`to-dsh --budget 200000` 超限时三层裁剪，
 默认不裁。
@@ -73,6 +76,8 @@ tools/verify-dsh-backend.cmd                           # dsh 原生后端强校�
 - **增量**：源会话新增了轮次再执行 to-dsh，只 append 新增轮次的事件（seq 自动续接）。
 - **人在回路**：to-dsh / sync-finish 同步前两道确认——① 来源区（全部/单源/组合）
   ② 数据量（仅增量/最近 N 天/全部历史）。交互弹菜单，非交互参数即确认，缺参拒绝执行。
+  **历史全量二次拦截**：`--scope all` 或 inc 首跑（无基准）在 `--apply` 时，交互弹 y/N
+  （默认取消），非交互必须由人显式给 `--confirm-history`，否则拒绝；inc（有基准）与天数窗口不拦。
 - **方向**：只写入 dsh；默认源 = zcode,hermes,codex,workbuddy,claude,opencode（不含 dsh 自身）。zcode 只出不进（写入方向已移除）。
 - **工作区分区**：导入会话按源 cwd 落入 dsh 对应工作区分组（attach-dsh 挂载）。
   两条编码规则已对全量数据核对（zcode 5/5 工作区、dsh 349/349 会话）。hermes 无 cwd 的旧会话：

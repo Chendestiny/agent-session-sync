@@ -132,12 +132,13 @@ python sync.py verify                          # 校验已导入 dsh 会话
 python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
 python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
 python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
+python sync-finish.py --sources all --scope all --confirm-history   # 历史全量需显式确认
 tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校验（Node 22）
 ```
 
 > **dsh 侧完整闭环 = 导入(to-dsh) + 挂分组与标题缓存(attach-dsh) + 重启 dsh。** 只导入不做第②步，
 > 会话会堆在「未分组」且列表不显示标题（点开才有）。批量改标题：编辑 `titles.json` 后
-> `python sync.py to-dsh --source all --scope all --apply --force --titles titles.json --budget 550000`。
+> `python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json --budget 550000`。
 >
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。

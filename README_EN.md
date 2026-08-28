@@ -49,12 +49,14 @@ tools\verify-dsh-backend.cmd                   # strong check via dsh's own back
 
 > **The full dsh loop = import (to-dsh) + group & titles (attach-dsh) + restart dsh.** Skipping step ②
 > leaves sessions in "ungrouped" with no list titles until opened. Bulk-rename titles: edit `titles.json`,
-> then `python sync.py to-dsh --source all --scope all --apply --force --titles titles.json --budget 550000`.
+> then `python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json --budget 550000`.
 >
 > Human-in-the-loop: every sync (to-dsh / sync-finish.py) asks two confirmations —
 > ① source scope (all / zcode,workbuddy / ...) ② data scope (inc / 7d / 30d / N days / all).
 > Interactive terminals get menus; non-interactive runs must pass `--source` + `--scope`
-> explicitly (flags = the confirmation; missing flags abort).
+> explicitly (flags = the confirmation; missing flags abort). Full-history sync
+> (`--scope all` or first-run inc) additionally requires an explicit y/N (interactive)
+> or the human-granted `--confirm-history` flag (non-interactive).
 >
 > Agent-facing manual: **AGENTS.md** is the complete entry point (cookbook / safety rules /
 > troubleshooting / upgrade adaptation) — hand it to any agent.

@@ -22,6 +22,14 @@ NONINTERACTIVE_HELP = (
     "  --scope          ：inc(仅增量) | 7d | 30d | 任意N天(如 14 或 14d) | all(全部历史)"
 )
 
+# 历史全量的人工拦截（非交互必须显式同意 token）
+NONINTERACTIVE_HISTORY_HELP = (
+    "⚠ 历史全量同步需要人工确认，非交互环境无法弹 y/N：\n"
+    "  · 只想同步增量/近期数据 → --scope inc（默认安全）或 --scope 7d/30d/N天\n"
+    "  · 确实要全量历史（人已拍板）→ 由人显式追加 --confirm-history，例如：\n"
+    "      python sync.py to-dsh --apply --source all --scope all --confirm-history"
+)
+
 _QUIT = ("q", "quit", "exit", "取消")
 
 
@@ -72,10 +80,10 @@ def scope_spec(scope: dict) -> str:
 
 def prompt_scope() -> dict:
     print("── 确认 2/2 · 同步多少数据 " + "─" * 24)
-    print("  1) 仅增量（上次同步后有新内容的会话；首次=全部）  ← 回车默认")
+    print("  1) 仅增量（上次同步后有新内容的会话）  ← 回车默认")
     print("  2) 最近 7 天")
     print("  3) 最近 30 天")
-    print("  4) 全部历史")
+    print("  4) 全部历史（历史全量，需二次确认）")
     print("  也可直接输入天数（如 14 = 最近 14 天）；q 取消")
     try:
         ans = input("选择 [1]: ").strip().lower()
@@ -90,6 +98,31 @@ def prompt_scope() -> dict:
     if ans == "4":
         return parse_scope("all")
     return parse_scope(ans)
+
+
+def history_full_sources(scope: dict, selected: list[str], state: dict, available=None) -> list[str]:
+    """哪些源本次将按『全部历史』处理（触发人工拦截）：
+
+    - scope=all：全部所选源
+    - scope=inc 且该源无增量基准（首次运行）：等同全量
+    - 天数窗口（7d/30d/N天）：有界，不拦截
+    """
+    avail = set(available) if available is not None else set(selected)
+    if scope.get("kind") == "all":
+        return [s for s in selected if s in avail]
+    if scope.get("kind") == "inc":
+        return [s for s in selected if s in avail and not state.get(s)]
+    return []
+
+
+def prompt_history_confirm(detail: str) -> bool:
+    """历史全量二次确认（y/N，默认 N=取消）。"""
+    print(f"⚠ 人工拦截：{detail}，将扫描/导入该源全部历史会话。")
+    try:
+        ans = input("确认执行？[y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return ans in ("y", "yes", "是")
 
 
 # ── 来源区 sources ───────────────────────────────────────────────────────

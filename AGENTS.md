@@ -46,7 +46,7 @@ python sync.py attach-dsh --apply                                           # �
 | 看各 agent 源概览 | `python sync.py status` |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
 | 挂工作区分组 + 标题预投影 | **退出 dsh 后** `python sync.py attach-dsh --apply`（改 workspace.json + 回填 projcache title 行，均先备份） |
-| 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --source all --scope all --apply --force --titles titles.json --budget 550000` → 重启 dsh |
+| 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json --budget 550000` → 重启 dsh |
 | 只同步某个会话 | 加 `--session <源ID子串>`（如 `--session sess_07c4`） |
 | 只同步某个工作区 | 加 `--cwd frontend`（子串匹配） |
 | 只要最近数据 | 确认2 用 `--scope 7d`（按最后活跃时间，推荐）；旧参数 `--since 7` 按创建时间过滤，仍可用 |
@@ -59,7 +59,8 @@ python sync.py attach-dsh --apply                                           # �
 
 **同步语义**：幂等（重复跑自动去重）；增量（源会话长了再跑 `to-dsh` 只追加新轮次；
 `--scope inc` 基准存于 `~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠）；
-**人在回路**（to-dsh / sync-finish 先确认 ①来源区 ②数据量：交互弹菜单、非交互参数即确认缺参拒绝）；
+**人在回路**（to-dsh / sync-finish 先确认 ①来源区 ②数据量：交互弹菜单、非交互参数即确认缺参拒绝；
+**历史全量二次拦截**：`--scope all` 或 inc 首跑在 `--apply` 时需交互 y/N 或人给的 `--confirm-history`，agent 不得自行拍板全量）；
 导入会话按源工作区自动落分区。落盘后可见性：dsh 需 attach + 重启。
 预期留在 dsh「未分组」的：源会话无 cwd（hermes 旧库）、cwd 目录已删除、临时目录、
 cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）。
