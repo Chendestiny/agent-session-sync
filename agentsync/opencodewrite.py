@@ -175,18 +175,30 @@ def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[di
                     x.get("text", "") for x in tr.content if isinstance(x, dict) and isinstance(x.get("text"), str)
                 )
                 status = "failed" if tr.is_error else "completed"
-            out.append(({"role": "assistant", "time": {"created": ms + k}},
-                        [{"type": "tool", "tool": name, "callID": cid,
-                          "state": {"input": _tool_input_obj(args_text), "output": out_text, "status": status}}]))
+            t_ms = ms + k
+            # 原生 state 完整键：status/input/output/metadata/title/time（缺一过不了 zod）
+            state = {
+                "status": status,
+                "input": _tool_input_obj(args_text),
+                "output": out_text,
+                "metadata": {"truncated": False},
+                "title": name,
+                "time": {"start": t_ms, "end": t_ms},
+            }
+            out.append(({"role": "assistant", "time": {"created": t_ms}},
+                        [{"type": "tool", "tool": name, "callID": cid, "state": state}]))
         for tr in results.values():  # 没有对应调用的孤儿结果
             k += 1
             out_text = "\n".join(
                 x.get("text", "") for x in tr.content if isinstance(x, dict) and isinstance(x.get("text"), str)
             )
-            out.append(({"role": "assistant", "time": {"created": ms + k}},
+            t_ms = ms + k
+            status = "failed" if tr.is_error else "completed"
+            out.append(({"role": "assistant", "time": {"created": t_ms}},
                         [{"type": "tool", "tool": "tool", "callID": tr.tool_call_id,
-                          "state": {"input": {}, "output": out_text,
-                                    "status": "failed" if tr.is_error else "completed"}}]))
+                          "state": {"status": status, "input": {}, "output": out_text,
+                                    "metadata": {"truncated": False}, "title": "tool",
+                                    "time": {"start": t_ms, "end": t_ms}}}]))
         if texts:
             k += 1
             data: dict = {"role": "assistant", "time": {"created": ms + k}}
