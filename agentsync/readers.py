@@ -206,6 +206,10 @@ def read_hermes(db_path, include_archived: bool = True) -> list[Session]:
             f"SELECT id, title, cwd, started_at, model, archived FROM sessions {where}"
         ).fetchall()
         for sid, title, cwd, started, model, archived in session_rows:
+            # cwd 兜底：hermes headless(-z) 模式不记录 cwd（交互模式正常）。
+            # dsh 侧栏不渲染 _no-cwd 分区会话（实测），无 cwd 的会话必须兜底到
+            # 用户主目录（≈ cmd 启动时的默认目录）才能可见——与 workbuddy 一致。
+            cwd = cwd or os.path.expanduser("~")
             msgs = list(
                 cur.execute(
                     "SELECT role, content, tool_call_id, tool_calls, reasoning, timestamp "
