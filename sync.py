@@ -728,6 +728,8 @@ def cmd_selftest(args):
         "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);"
         "CREATE TABLE project_directory (project_id TEXT NOT NULL, directory TEXT NOT NULL, type TEXT, "
         "strategy TEXT, time_created INTEGER);"
+        "CREATE TABLE event_sequence (aggregate_id TEXT, seq INTEGER, owner_id TEXT);"
+        "CREATE TABLE event (id TEXT PRIMARY KEY, aggregate_id TEXT, seq INTEGER, type TEXT, data TEXT);"
     )
     con.commit()
     con.close()
@@ -766,6 +768,11 @@ def cmd_selftest(args):
     con.close()
     check(prow is not None and prow[0] != "global" and prow[1] == part_dir.replace(chr(92), "/"),
           "opencode：存在的 cwd 落自建分区 project")
+    con = sqlite3.connect(ocw_db)
+    ev_n = con.execute("SELECT COUNT(*) FROM event WHERE aggregate_id LIKE 'ses_%'").fetchone()[0]
+    ev_seq = con.execute("SELECT COUNT(*) FROM event_sequence").fetchone()[0]
+    con.close()
+    check(ev_n > 0 and ev_seq > 0, "opencode：事件流已生成（桌面事件溯源渲染的数据源）")
 
     wb_home = os.path.join(box, "wb-home")
     os.makedirs(os.path.join(wb_home, "projects"), exist_ok=True)

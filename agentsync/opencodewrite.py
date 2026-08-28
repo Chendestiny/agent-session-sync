@@ -231,6 +231,54 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
         con.close()
 
 
+def _write_events(cur, s: dict, slug: str, project_id: str, feed: list, now_ms: int) -> None:
+    """opencode 1.18 桌面按事件溯源渲染（event/event_sequence 表）——不写事件，
+    会话点开即报 `Expected a string starting with "msg", got "{messageID}"`。
+
+    每个导入会话补最小事件流：session.created → 每 message.updated →
+    每 message.part.updated → session.updated（载荷模板取自真库原生事件）。
+    注意：事件里的 directory 用反斜杠（与 session 表的正斜杠相反）。
+    """
+    sid = s["id"]
+    sess_info = {
+        "id": sid, "slug": slug, "projectID": project_id,
+        "directory": s["directory"].replace("/", "\\"), "path": _derived_path(s["directory"]),
+        "cost": 0,
+        "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+        "title": s["title"], "version": _VERSION,
+        "time": {"created": s["time_created"] or now_ms, "updated": s["time_updated"] or now_ms},
+    }
+    row = cur.execute("SELECT seq FROM event_sequence WHERE aggregate_id=?", (sid,)).fetchone()
+    seq = int(row[0]) if row else -1
+    if row is None:
+        cur.execute("INSERT INTO event_sequence (aggregate_id, seq, owner_id) VALUES (?,?,NULL)", (sid, seq))
+
+    def emit(ev_type: str, data: dict) -> None:
+        nonlocal seq
+        seq += 1
+        cur.execute(
+            "INSERT INTO event (id, aggregate_id, seq, type, data) VALUES (?,?,?,?,?)",
+            ("evt_" + uuid.uuid5(_NS, f"{sid}:{seq}:{ev_type}").hex[:26], sid, seq, ev_type,
+             json.dumps(data, ensure_ascii=False)),
+        )
+
+    emit("session.created.1", {"sessionID": sid, "info": dict(sess_info)})
+    for mid, data, ms, plist in feed:
+        minfo = {"id": mid, "sessionID": sid, "role": data.get("role"), "time": {"created": ms}}
+        emit("message.updated.1", {"sessionID": sid, "info": minfo})
+        for pid, pt, pms in plist:
+            part = {"id": pid, "sessionID": sid, "messageID": mid}
+            part.update(pt)
+            if pt.get("type") == "reasoning":
+                part.setdefault("time", {"start": pms})
+            emit("message.part.updated.1", {"sessionID": sid, "part": part, "time": pms})
+    final = dict(sess_info)
+    final["agent"] = "build"
+    final["time"] = {"created": sess_info["time"]["created"], "updated": now_ms}
+    emit("session.updated.1", {"sessionID": sid, "info": final})
+    cur.execute("UPDATE event_sequence SET seq=? WHERE aggregate_id=?", (seq, sid))
+
+
 def apply_write(plan: dict) -> str:
     con = _conn(plan["path"])
     try:
@@ -253,9 +301,11 @@ def apply_write(plan: dict) -> str:
             project_id = _ensure_project(cur, s["directory"])
         if exists:
             if plan["action"] == "create":
-                # force 整体重写：清旧消息/部件，否则确定性 uuid5 id 会撞主键
+                # force 整体重写：清旧消息/部件/事件，否则确定性 uuid5 id 会撞主键
                 cur.execute("DELETE FROM part WHERE session_id=?", (s["id"],))
                 cur.execute("DELETE FROM message WHERE session_id=?", (s["id"],))
+                cur.execute("DELETE FROM event WHERE aggregate_id=?", (s["id"],))
+                cur.execute("DELETE FROM event_sequence WHERE aggregate_id=?", (s["id"],))
             cur.execute(
                 "UPDATE session SET title=?, directory=?, path=?, project_id=?, slug=?, time_updated=? WHERE id=?",
                 (s["title"], s["directory"], _derived_path(s["directory"]), project_id, slug, now_ms, s["id"]),
@@ -273,6 +323,7 @@ def apply_write(plan: dict) -> str:
                              "variant": "default"}, ensure_ascii=False)),
             )
         sid = s["id"]
+        feed: list = []  # (mid, message.data, ms, [(pid, part.data, ms), ...])
         for mi, (data, parts) in enumerate(plan["messages"]):
             ms = (data.get("time") or {}).get("created") or now_ms
             mid = "msg_" + uuid.uuid5(_NS, f"{sid}:{ms}:{mi}").hex[:26]
@@ -280,6 +331,7 @@ def apply_write(plan: dict) -> str:
                 "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)",
                 (mid, sid, ms, ms, json.dumps(data, ensure_ascii=False)),
             )
+            plist = []
             for pi, pt in enumerate(parts or [{"type": "text", "text": ""}]):
                 pid = "prt_" + uuid.uuid5(_NS, f"{mid}:{pi}:{pt.get('type')}").hex[:26]
                 cur.execute(
@@ -287,6 +339,9 @@ def apply_write(plan: dict) -> str:
                     "VALUES (?,?,?,?,?,?)",
                     (pid, mid, sid, ms, ms, json.dumps(pt, ensure_ascii=False)),
                 )
+                plist.append((pid, pt, ms))
+            feed.append((mid, data, ms, plist))
+        _write_events(cur, s, slug, project_id, feed, now_ms)
         con.commit()
         return f"{plan['action']} {len(plan['messages'])} messages -> {plan['path']} ({sid[:12]})"
     finally:

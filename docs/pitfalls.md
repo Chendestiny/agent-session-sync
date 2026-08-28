@@ -43,6 +43,7 @@
 | directory 与当前项目不匹配 | 补了 path 仍看不到 / 全堆在 Default Project | 分区规则：cwd 真实存在 → 会话落自己的分区（找/建 project；桌面自建的分区自动复用）；缺失 → 兜底默认上下文（global）。默认上下文取 global 分区 time_created 最新会话的 directory（不能用 time_updated——force 重写会推高它造成漂移） |
 | session.model 裸字符串 | opencode JSON 解析 model 列会炸 | 必须写 JSON：`{"id","providerID":"opencode","variant":"default"}` |
 | force 重写不清旧消息 | 确定性 uuid5 id 撞 message 主键 | force=create 时先 DELETE 旧 message/part 再写 |
+| **缺事件流（1.18 桌面事件溯源）** | 点开会话报 `Expected a string starting with "msg", got "{messageID}"` | 桌面渲染读 `event`/`event_sequence` 表而非直查 message；写入器补最小事件流（session.created → message.updated× → message.part.updated× → session.updated，directory 用反斜杠）；agentctxsync 配方（1.17 时代）无此表 |
 
 ## workbuddy
 
