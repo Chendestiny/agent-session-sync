@@ -123,7 +123,7 @@ python sync.py status                          # 各 agent 源概览
 python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
 python sync.py to-dsh   --source zcode --scope 7d          # 参数即确认：zcode + 最近 7 天
 python sync.py to-dsh   --source all --scope inc --apply   # ① 导入到 dsh（agent/脚本必给两参）
-python sync.py to-codex --source zcode --scope inc --apply  # 反向写入 codex（to-claude/to-hermes 同款）
+python sync.py to-codex --source zcode --scope inc --apply  # 反向写入 codex（to-claude/to-hermes/to-opencode/to-workbuddy 同款）
 python sync.py pull --source all --scope inc                # A→C：各源 → 规范库 ~/.session-sync（安全免退出）
 python sync.py push --target codex --apply --scope inc      # C→B：断点续推（中途换 agent 可继续）
 # ② 完全退出 dsh 后：挂工作区分组 + 回填侧栏标题缓存（新会话进分组且列表直接带标题）

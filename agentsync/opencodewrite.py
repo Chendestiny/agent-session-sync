@@ -1,0 +1,234 @@
+r"""写入 opencode（%LOCALAPPDATA%\opencode\opencode.db 或 ~/.local/share/opencode/opencode.db）。
+
+配方对齐 agentctxsync 的 opencode 适配器（实机验证）+ 本机真库 ground truth：
+- session 表：id='ses_'+uuid5hex（确定性幂等）、version/agent='build'、
+  model 列必须是 JSON（{"id","providerID":"opencode","variant":"default"}，裸字符串会炸）、
+  directory 用正斜杠、slug 小写连字符且全库唯一
+- project_id：按 directory 匹配 project/project_directory（桌面版列表按 project 圈会话），
+  匹配不到落 'global'（永远存在的桶）
+- message.data：{"role","time":{"created"}(,model:{modelID})}；
+  part.data：text / reasoning / tool（一个 tool part 同时带 state.input+state.output，
+  读取器天然配对回调用与回传——比 agentctxsync 的有损配方多保真一档）
+- 增量：按已有 user 消息数整轮追加；墓碑放 opencode.db 同目录
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sqlite3
+import uuid
+
+from .dshwrite import load_tombstones
+from .model import Session, apply_budget_trim
+
+_NS = uuid.UUID("7e9b1d3f-6a2c-4d8e-b1f0-5c7d9e2a4b6c")
+_VERSION = "1.18.23"  # 对齐本机真库
+
+
+def local_id(sess: Session) -> str:
+    return "ses_" + uuid.uuid5(_NS, f"{sess.source}:{sess.source_id}").hex
+
+
+def _slugify(title: str) -> str:
+    s = re.sub(r"[^a-z0-9-]+", "-", (title or "").lower()).strip("-")
+    s = re.sub(r"-{2,}", "-", s)
+    return s[:60] or "imported"
+
+
+def _norm_dir(d: str) -> str:
+    return (d or "").replace("\\", "/").rstrip("/").lower()
+
+
+def _resolve_project(cur, directory: str) -> str:
+    """按 directory 匹配 project（桌面列表按 project_id 圈会话）；失配落 global。"""
+    want = _norm_dir(directory)
+    try:
+        for pid, pdir in cur.execute("SELECT project_id, directory FROM project_directory"):
+            if _norm_dir(str(pdir or "")) == want:
+                return pid
+    except sqlite3.OperationalError:
+        pass
+    try:
+        for pid, wt in cur.execute("SELECT id, worktree FROM project WHERE worktree IS NOT NULL"):
+            if _norm_dir(str(wt)) == want:
+                return pid
+    except sqlite3.OperationalError:
+        pass
+    return "global"
+
+
+def _conn(db_path: str, ro: bool = False):
+    p = str(db_path).replace(chr(92), "/")
+    uri = f"file:{p}?mode=ro" if ro else f"file:{p}"
+    con = sqlite3.connect(uri, uri=True)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def _count_user_turns(cur, sid: str) -> int:
+    n = 0
+    for (data,) in cur.execute("SELECT data FROM message WHERE session_id=?", (sid,)):
+        try:
+            role = (json.loads(data or "{}") or {}).get("role")
+        except (ValueError, TypeError):
+            continue
+        if role == "user":
+            n += 1
+    return n
+
+
+def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[dict, list[dict]]]:
+    """一个 IR 轮 → [(message.data, [part.data...]), ...]。"""
+    ms = base_ms + idx * 1000
+    out: list[tuple[dict, list[dict]]] = []
+    out.append(({"role": "user", "time": {"created": ms}},
+                [{"type": "text", "text": turn.prompt}]))
+    k = 0
+    for step in turn.steps:
+        texts: list[str] = []
+        reasonings: list[str] = []
+        calls: list[tuple[str, str, str]] = []  # (call_id, name, args_text)
+        results = {tr.tool_call_id: tr for tr in step.tool_results}
+        for b in step.content:
+            if not isinstance(b, dict):
+                continue
+            bt = b.get("type")
+            if bt == "text" and isinstance(b.get("text"), str) and b["text"].strip():
+                texts.append(b["text"])
+            elif bt == "reasoning" and isinstance(b.get("text"), str) and b["text"].strip():
+                reasonings.append(b["text"])
+            elif bt == "tool-call":
+                args = b.get("arguments")
+                calls.append((str(b.get("id") or ""), b.get("name") or "unknown",
+                              args if isinstance(args, str) else json.dumps(args if args is not None else {}, ensure_ascii=False)))
+        if reasonings:
+            k += 1
+            out.append(({"role": "assistant", "time": {"created": ms + k}},
+                        [{"type": "reasoning", "text": "\n".join(reasonings)}]))
+        for cid, name, args_text in calls:
+            k += 1
+            tr = results.pop(cid, None)
+            out_text = ""
+            status = "completed"
+            if tr is not None:
+                out_text = "\n".join(
+                    x.get("text", "") for x in tr.content if isinstance(x, dict) and isinstance(x.get("text"), str)
+                )
+                status = "failed" if tr.is_error else "completed"
+            out.append(({"role": "assistant", "time": {"created": ms + k}},
+                        [{"type": "tool", "tool": name, "callID": cid,
+                          "state": {"input": args_text, "output": out_text, "status": status}}]))
+        for tr in results.values():  # 没有对应调用的孤儿结果
+            k += 1
+            out_text = "\n".join(
+                x.get("text", "") for x in tr.content if isinstance(x, dict) and isinstance(x.get("text"), str)
+            )
+            out.append(({"role": "assistant", "time": {"created": ms + k}},
+                        [{"type": "tool", "tool": "tool", "callID": tr.tool_call_id,
+                          "state": {"input": "", "output": out_text,
+                                    "status": "failed" if tr.is_error else "completed"}}]))
+        if texts:
+            k += 1
+            data: dict = {"role": "assistant", "time": {"created": ms + k}}
+            if sess.model:
+                data["model"] = {"providerID": "opencode", "modelID": sess.model}
+            out.append((data, [{"type": "text", "text": "\n".join(texts)}]))
+    return out
+
+
+def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = False, titles: dict | None = None) -> dict:
+    """opencode 版写入计划：create / append / up-to-date / skip / skip-deleted。"""
+    turns, trimmed = apply_budget_trim(sess.turns, budget)
+    sid = local_id(sess)
+    state_dir = os.path.dirname(str(db_path))
+    created = sess.created_at or 0
+    stats = {
+        "messages": 1 + sum(1 + len(s.tool_results) for t in turns for s in t.steps),
+        "toolCalls": sum(len(s.tool_calls) for t in turns for s in t.steps),
+    }
+    plan = {"path": str(db_path), "sid": sid, "messages": [], "stats": stats, "trimmed": trimmed,
+            "sourceTurns": len(turns), "session_row": None}
+    if not turns:
+        return {**plan, "action": "skip", "reason": "无可导入轮次"}
+    if sess.source_id in load_tombstones(state_dir):
+        return {**plan, "action": "skip-deleted", "reason": "曾被删除（墓碑拦截）"}
+    con = _conn(db_path, ro=True)
+    try:
+        cur = con.cursor()
+        exists = cur.execute("SELECT 1 FROM session WHERE id=?", (sid,)).fetchone() is not None
+        have = _count_user_turns(cur, sid) if exists else 0
+        plan["existingTurns"] = have
+        if exists and have >= len(turns) and not force:
+            return {**plan, "action": "up-to-date"}
+        directory = (sess.cwd or os.path.expanduser("~")).replace("\\", "/")
+        plan["session_row"] = {
+            "id": sid,
+            "project_id": _resolve_project(cur, directory),
+            "slug": None,  # apply 时做唯一性处理
+            "directory": directory,
+            "title": (sess.title or "").strip() or (turns[0].prompt[:40] if turns else ""),
+            "time_created": created or None,
+            "time_updated": (sess.updated_at or created or None),
+        }
+        base = 0 if (force or not exists) else have
+        tail = turns if (force or not exists) else turns[have:]
+        msgs: list[tuple[dict, list[dict]]] = []
+        for i, t in enumerate(tail):
+            msgs += _turn_messages(sess, t, base + i, created or 1787000000000)
+        plan["messages"] = msgs
+        return {**plan, "action": "append" if (exists and not force) else "create"}
+    finally:
+        con.close()
+
+
+def apply_write(plan: dict) -> str:
+    con = _conn(plan["path"])
+    try:
+        cur = con.cursor()
+        s = plan["session_row"]
+        exists = cur.execute("SELECT 1 FROM session WHERE id=?", (s["id"],)).fetchone() is not None
+        import time as _time
+
+        now_ms = int(_time.time() * 1000)
+        slug = _slugify(s["title"])
+        n = 2
+        taken = {r[0] for r in cur.execute("SELECT slug FROM session WHERE id != ?", (s["id"],))}
+        while slug in taken:
+            slug = f"{_slugify(s['title'])[:56]}-{n}"
+            n += 1
+        if exists:
+            cur.execute(
+                "UPDATE session SET title=?, directory=?, slug=?, time_updated=? WHERE id=?",
+                (s["title"], s["directory"], slug, now_ms, s["id"]),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, "
+                "time_created, time_updated, cost, tokens_input, tokens_output, tokens_reasoning, "
+                "tokens_cache_read, tokens_cache_write, agent, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (s["id"], s["project_id"], None, slug, s["directory"], s["title"], _VERSION,
+                 s["time_created"] or now_ms, s["time_updated"] or now_ms,
+                 0.0, 0, 0, 0, 0, 0, "build",
+                 json.dumps({"id": plan.get("model") or "imported", "providerID": "opencode",
+                             "variant": "default"}, ensure_ascii=False)),
+            )
+        sid = s["id"]
+        for mi, (data, parts) in enumerate(plan["messages"]):
+            ms = (data.get("time") or {}).get("created") or now_ms
+            mid = "msg_" + uuid.uuid5(_NS, f"{sid}:{ms}:{mi}").hex[:26]
+            cur.execute(
+                "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)",
+                (mid, sid, ms, ms, json.dumps(data, ensure_ascii=False)),
+            )
+            for pi, pt in enumerate(parts or [{"type": "text", "text": ""}]):
+                pid = "prt_" + uuid.uuid5(_NS, f"{mid}:{pi}:{pt.get('type')}").hex[:26]
+                cur.execute(
+                    "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (pid, mid, sid, ms, ms, json.dumps(pt, ensure_ascii=False)),
+                )
+        con.commit()
+        return f"{plan['action']} {len(plan['messages'])} messages -> {plan['path']} ({sid[:12]})"
+    finally:
+        con.close()

@@ -38,7 +38,7 @@ python sync.py status                          # seven-source overview
 python sync.py to-dsh                          # interactive: two confirm menus (sources → scope), then dry-run
 python sync.py to-dsh   --source zcode --scope 7d          # flags = the confirmation (zcode, last 7 days)
 python sync.py to-dsh   --source all --scope inc --apply   # ① import into dsh (agents must pass both flags)
-python sync.py to-codex --source zcode --scope inc --apply  # reverse write into codex (to-claude / to-hermes alike)
+python sync.py to-codex --source zcode --scope inc --apply  # reverse write into codex (to-claude / to-hermes / to-opencode / to-workbuddy alike)
 python sync.py pull --source all --scope inc                # A→C: sources → canonical store ~/.session-sync (safe, no app exits)
 python sync.py push --target codex --apply --scope inc      # C→B: resumable push (any agent can continue mid-way)
 # ② fully quit dsh, then: attach to workspace groups + backfill sidebar title cache

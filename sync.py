@@ -307,16 +307,19 @@ def cmd_push(args):
     """push：规范库 C → 目标 agent。幂等断点续推（C 内每目标水位文件）；
     写 agent 存储照旧两道确认 + 历史全量拦截；换任何 agent 重跑自动从断点继续。
     """
-    from agentsync import claudewrite, codexwrite, hermeswrite, store
+    from agentsync import claudewrite, codexwrite, hermeswrite, opencodewrite, store, workbuddywrite
 
     if not store.store_exists():
         sys.exit("规范库 C 为空：先跑 python sync.py pull")
-    writers = {"dsh": dshwrite, "codex": codexwrite, "claude": claudewrite, "hermes": hermeswrite}
+    writers = {"dsh": dshwrite, "codex": codexwrite, "claude": claudewrite, "hermes": hermeswrite,
+               "opencode": opencodewrite, "workbuddy": workbuddywrite}
     getters = {
         "dsh": lambda p: p.dsh_sessions,
         "codex": lambda p: p.codex_sessions,
         "claude": lambda p: p.claude_projects,
         "hermes": lambda p: p.hermes_db,
+        "opencode": lambda p: p.opencode_db,
+        "workbuddy": lambda p: p.workbuddy_home,
     }
     target = args.target
     _run_sink(
@@ -350,6 +353,18 @@ def cmd_to_hermes(args):
     from agentsync import hermeswrite as _w
 
     _run_sink(args, "hermes", lambda p: p.hermes_db, _w)
+
+
+def cmd_to_opencode(args):
+    from agentsync import opencodewrite as _w
+
+    _run_sink(args, "opencode", lambda p: p.opencode_db, _w)
+
+
+def cmd_to_workbuddy(args):
+    from agentsync import workbuddywrite as _w
+
+    _run_sink(args, "workbuddy", lambda p: p.workbuddy_home, _w)
 
 
 def cmd_archive(args):
@@ -445,7 +460,7 @@ def cmd_selftest(args):
             turns=turns,
         )
 
-    print("== 1/7 dsh 写入与读回（沙箱根）==")
+    print("== 1/8 dsh 写入与读回（沙箱根）==")
     dsh_root = os.path.join(box, "dsh-root")
     plan = dshwrite.plan_write(dsh_root, fake(), None)
     check(plan["action"] == "create", "plan 首次为 create")
@@ -456,7 +471,7 @@ def cmd_selftest(args):
     back = read_dsh(dsh_root)
     check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "[codex] 自检会话", "读回 1 会话 1 轮带标题（自动来源前缀）")
 
-    print("== 2/7 dsh 增量追加 ==")
+    print("== 2/8 dsh 增量追加 ==")
     plan2 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan2["action"] == "append" and len(plan2["events"]) > 0, f"plan 二次为 append（+{len(plan2['events'])} 事件）")
     dshwrite.apply_write(plan2)
@@ -488,11 +503,11 @@ def cmd_selftest(args):
     tb3 = dshwrite.plan_title_backfill(dsh_root)
     check(sid_key in tb3["backfill"], "identity 失配且 title 一致时仍重建条目（回归）")
 
-    print("== 3/7 归档渲染 ==")
+    print("== 3/8 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")
 
-    print("== 4/7 确认与增量（HITL 纯函数）==")
+    print("== 4/8 确认与增量（HITL 纯函数）==")
     from agentsync import confirm as cf
     from agentsync import syncstate
 
@@ -535,7 +550,7 @@ def cmd_selftest(args):
     check(cf.history_full_sources({"kind": "days", "days": 7}, ["zcode"], {}) == [],
           "历史拦截：天数窗口（有界）不命中")
 
-    print("== 5/7 claude / opencode 读取器（沙箱样本）==")
+    print("== 5/8 claude / opencode 读取器（沙箱样本）==")
     import tempfile
 
     from agentsync.readers import read_claude, read_opencode
@@ -604,7 +619,7 @@ def cmd_selftest(args):
     check(oc[0].updated_at == 1787000009000 and oc[0].cwd == "D:/oc" and oc[0].model == "gpt-test",
           "opencode：updated_at / cwd / model")
 
-    print("== 6/7 反向写入器（codex / claude / hermes 沙箱回路）==")
+    print("== 6/8 反向写入器（codex / claude / hermes 沙箱回路）==")
     from agentsync import claudewrite, codexwrite, hermeswrite
     from agentsync.readers import read_claude, read_codex, read_hermes
 
@@ -652,7 +667,7 @@ def cmd_selftest(args):
     check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "hermes：追加后含工具调用")
     check(hermeswrite.plan_write(hm_db, fake(v2=True), None)["action"] == "up-to-date", "hermes：三次 up-to-date")
 
-    print("== 7/7 规范库 C（存储层 + push 全链路）==")
+    print("== 7/8 规范库 C（存储层 + push 全链路）==")
     from agentsync import store as st_mod
 
     os.environ["SESSION_SYNC_HOME"] = os.path.join(box, "session-sync")
@@ -681,6 +696,67 @@ def cmd_selftest(args):
     finally:
         del os.environ["SESSION_SYNC_HOME"]
 
+    print("== 8/8 桌面版写入器（opencode / workbuddy 沙箱回路）==")
+    from agentsync import opencodewrite, workbuddywrite
+    from agentsync.readers import read_opencode, read_workbuddy
+
+    ocw_db = os.path.join(box, "ocw", "opencode.db")
+    os.makedirs(os.path.dirname(ocw_db), exist_ok=True)
+    con = sqlite3.connect(ocw_db)
+    con.executescript(
+        "CREATE TABLE project (id TEXT PRIMARY KEY, name TEXT, worktree TEXT);"
+        "INSERT INTO project(id,name,worktree) VALUES('global',NULL,'/');"
+        "CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, parent_id TEXT, slug TEXT NOT NULL, "
+        "directory TEXT NOT NULL, title TEXT NOT NULL, version TEXT NOT NULL, share_url TEXT, "
+        "summary_additions INTEGER, summary_deletions INTEGER, summary_files INTEGER, summary_diffs TEXT, "
+        "revert TEXT, permission TEXT, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, "
+        "time_compacting INTEGER, time_archived INTEGER, workspace_id TEXT, path TEXT, agent TEXT, model TEXT, "
+        "cost REAL NOT NULL DEFAULT 0, tokens_input INTEGER NOT NULL DEFAULT 0, tokens_output INTEGER NOT NULL DEFAULT 0, "
+        "tokens_reasoning INTEGER NOT NULL DEFAULT 0, tokens_cache_read INTEGER NOT NULL DEFAULT 0, "
+        "tokens_cache_write INTEGER NOT NULL DEFAULT 0, metadata TEXT);"
+        "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, time_created INTEGER NOT NULL, "
+        "time_updated INTEGER NOT NULL, data TEXT NOT NULL);"
+        "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, session_id TEXT NOT NULL, "
+        "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);"
+        "CREATE TABLE project_directory (project_id TEXT NOT NULL, directory TEXT NOT NULL, type TEXT, "
+        "strategy TEXT, time_created INTEGER);"
+    )
+    con.commit()
+    con.close()
+    p1 = opencodewrite.plan_write(ocw_db, fake(), None)
+    check(p1["action"] == "create", "opencode：计划 create")
+    opencodewrite.apply_write(p1)
+    back = read_opencode(ocw_db)
+    check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "opencode：读回提问")
+    p2 = opencodewrite.plan_write(ocw_db, fake(v2=True), None)
+    opencodewrite.apply_write(p2)
+    back2 = read_opencode(ocw_db)
+    check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls and back2[0].turns[1].steps[0].tool_results),
+          "opencode：工具调用+回传往返（input/output 同 part）")
+    check(opencodewrite.plan_write(ocw_db, fake(v2=True), None)["action"] == "up-to-date", "opencode：三次 up-to-date")
+
+    wb_home = os.path.join(box, "wb-home")
+    os.makedirs(os.path.join(wb_home, "projects"), exist_ok=True)
+    con = sqlite3.connect(os.path.join(wb_home, "workbuddy.db"))
+    con.executescript(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT NOT NULL, user_id TEXT NOT NULL, title TEXT, "
+        "custom_title TEXT, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, "
+        "deleted_at INTEGER, is_playground INTEGER NOT NULL, source_mode TEXT, is_background_automation INTEGER, "
+        "mode TEXT, model TEXT, last_activity_at INTEGER);"
+    )
+    con.commit()
+    con.close()
+    w1 = workbuddywrite.plan_write(wb_home, fake(), None)
+    check(w1["action"] == "create", "workbuddy：计划 create")
+    workbuddywrite.apply_write(w1)
+    back = read_workbuddy(wb_home)
+    check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "workbuddy：读回提问")
+    w2 = workbuddywrite.plan_write(wb_home, fake(v2=True), None)
+    workbuddywrite.apply_write(w2)
+    back2 = read_workbuddy(wb_home)
+    check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "workbuddy：追加后含工具调用")
+    check(workbuddywrite.plan_write(wb_home, fake(v2=True), None)["action"] == "up-to-date", "workbuddy：三次 up-to-date")
+
     if args.keep:
         print(f"\n沙箱保留在：{box}")
     else:
@@ -704,6 +780,8 @@ def main():
         ("to-codex", cmd_to_codex, "覆盖 codex sessions 根目录"),
         ("to-claude", cmd_to_claude, "覆盖 claude projects 根目录"),
         ("to-hermes", cmd_to_hermes, "覆盖 hermes state.db 路径"),
+        ("to-opencode", cmd_to_opencode, "覆盖 opencode opencode.db 路径"),
+        ("to-workbuddy", cmd_to_workbuddy, "覆盖 workbuddy home 目录"),
     ):
         s = sub.add_parser(sink, help=f"导入到 {sink[3:]}（可续聊）")
         s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode[,dsh]；交互缺省时弹菜单")
@@ -725,7 +803,7 @@ def main():
     s.set_defaults(fn=cmd_pull)
 
     s = sub.add_parser("push", help="规范库 C → 目标 agent（幂等断点续推，中途换 agent 可继续）")
-    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes"], help="推送目标")
+    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes", "opencode", "workbuddy"], help="推送目标")
     s.add_argument("--source", default="", help="来源区（确认1/2）：C 里哪些源推过去")
     s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（写 agent 存储，全量需确认）")
     s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")

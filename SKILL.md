@@ -56,6 +56,8 @@ python sync.py to-dsh --source all --scope all --apply --force --confirm-history
 python sync.py to-codex --source all --scope inc --apply   # 反向写入 codex（可 resume）
 python sync.py to-claude --source all --scope inc --apply  # 反向写入 claude code
 python sync.py to-hermes --source all --scope inc --apply  # 反向写入 hermes
+python sync.py to-opencode --source all --scope inc --apply   # 反向写入 opencode（桌面/CLI 共库）
+python sync.py to-workbuddy --source all --scope inc --apply  # 反向写入 workbuddy（db+jsonl 双写）
 # 非 dsh 目标的『全部』默认含 dsh 自身（dsh 会话反向流出）；zcode 只读不可写（实证渲染 bug）
 python sync.py pull --source all --scope inc      # A→C：各源 → 规范库 ~/.session-sync（安全，免退出任何应用）
 python sync.py push --target codex --source all --scope inc --apply   # C→B：断点续推（中途换 agent 可继续）
