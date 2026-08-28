@@ -193,7 +193,7 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
         "toolCalls": sum(len(s.tool_calls) for t in turns for s in t.steps),
     }
     plan = {"path": str(db_path), "sid": sid, "messages": [], "stats": stats, "trimmed": trimmed,
-            "sourceTurns": len(turns), "session_row": None}
+            "sourceTurns": len(turns), "session_row": None, "model": sess.model}
     if not turns:
         return {**plan, "action": "skip", "reason": "无可导入轮次"}
     if sess.source_id in load_tombstones(state_dir):
@@ -264,7 +264,9 @@ def _write_events(cur, s: dict, slug: str, project_id: str, feed: list, now_ms: 
 
     emit("session.created.1", {"sessionID": sid, "info": dict(sess_info)})
     for mid, data, ms, plist in feed:
-        minfo = {"id": mid, "sessionID": sid, "role": data.get("role"), "time": {"created": ms}}
+        minfo = dict(data)  # 完整消息形状（agent/model/parentID 等已由 apply 补齐）
+        minfo["id"] = mid
+        minfo["sessionID"] = sid
         emit("message.updated.1", {"sessionID": sid, "info": minfo})
         for pid, pt, pms in plist:
             part = {"id": pid, "sessionID": sid, "messageID": mid}
@@ -323,10 +325,37 @@ def apply_write(plan: dict) -> str:
                              "variant": "default"}, ensure_ascii=False)),
             )
         sid = s["id"]
+        model_id = plan.get("model") or "imported"
+        directory_bs = s["directory"].replace("/", "\\")
+        last_user_mid: str | None = None
         feed: list = []  # (mid, message.data, ms, [(pid, part.data, ms), ...])
         for mi, (data, parts) in enumerate(plan["messages"]):
+            data = dict(data)
+            if data.get("role") == "user":
+                # 原生 user 形状（缺 agent/model/summary 会过不了服务端 zod 校验）
+                data.setdefault("agent", "build")
+                data.setdefault("model", {"providerID": "opencode", "modelID": model_id})
+                data.setdefault("summary", {"diffs": []})
+            else:
+                data.setdefault("mode", "build")
+                data.setdefault("agent", "build")
+                data.setdefault("path", {"cwd": directory_bs, "root": "/"})
+                data.setdefault("cost", 0)
+                data.setdefault("tokens", {"total": 0, "input": 0, "output": 0, "reasoning": 0,
+                                           "cache": {"write": 0, "read": 0}})
+                data.setdefault("modelID", model_id)
+                data.setdefault("providerID", "opencode")
+                data.setdefault("finish", "tool-calls" if any(p.get("type") == "tool" for p in parts) else "stop")
             ms = (data.get("time") or {}).get("created") or now_ms
             mid = "msg_" + uuid.uuid5(_NS, f"{sid}:{ms}:{mi}").hex[:26]
+            if data.get("role") == "user":
+                data.setdefault("time", {"created": ms})
+                last_user_mid = mid
+            else:
+                if last_user_mid:
+                    data.setdefault("parentID", last_user_mid)
+                t = data.setdefault("time", {"created": ms})
+                t.setdefault("completed", ms)
             cur.execute(
                 "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)",
                 (mid, sid, ms, ms, json.dumps(data, ensure_ascii=False)),

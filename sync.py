@@ -200,6 +200,14 @@ def _run_sink(args, name: str, get_store, writer, loader=None, state_dir=None, s
     if include_dsh is None:
         include_dsh = name != "dsh"
     which = _resolve_sources(args, include_dsh=include_dsh)
+    # 防自我回环：来源=目标（如 push--target opencode 推 opencode 自家会话）会造成
+    # 同一会话双份（uuid5 id ≠ 原生 id），一律跳过。
+    target = name.split(":")[-1]
+    if target in which:
+        print(f"  [跳过] 来源 {target} 与目标相同（防重复导入）")
+        which = [s for s in which if s != target]
+        if not which:
+            sys.exit("所选来源全部与目标相同，无可同步内容")
     scope = _resolve_scope(args)
     root = args.root or str(store)
     s_root = state_dir or (root if os.path.isdir(root) else os.path.dirname(root))

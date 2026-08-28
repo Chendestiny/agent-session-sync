@@ -44,6 +44,7 @@
 | session.model 裸字符串 | opencode JSON 解析 model 列会炸 | 必须写 JSON：`{"id","providerID":"opencode","variant":"default"}` |
 | force 重写不清旧消息 | 确定性 uuid5 id 撞 message 主键 | force=create 时先 DELETE 旧 message/part 再写 |
 | **缺事件流（1.18 桌面事件溯源）** | 点开会话报 `Expected a string starting with "msg", got "{messageID}"` | 桌面渲染读 `event`/`event_sequence` 表而非直查 message；写入器补最小事件流（session.created → message.updated× → message.part.updated× → session.updated，directory 用反斜杠）；agentctxsync 配方（1.17 时代）无此表 |
+| **消息形状不完整** | 点开会话报 `Missing key at [0]["info"]["agent"]` | message.data 与事件 info 必须是完整原生形状：user 带 agent/model/summary；assistant 带 parentID/mode/path/cost/tokens/modelID/finish——写入器按原生模板补齐 |
 
 ## workbuddy
 
