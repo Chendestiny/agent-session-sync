@@ -2,7 +2,7 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-把 **codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy** 五家的会话记录归一到 **dsh**：
+把 **codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode** 七家的会话记录归一到 **dsh**：
 任何一家的历史会话都可以导入 dsh **继续对话**，并可导出统一的 **Markdown 归档**。
 **其他agent 只出不进**（仅作为读取源；写入方向已移除——双端同对话易混乱，且实测活库写入
 存在时间/渲染兼容问题）。
@@ -194,9 +194,9 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
   verify-dsh-backend.mjs   dsh 原生后端读回校验（Node 22+，先 nvm use 22）
   verify-dsh-backend.cmd   上者的 Windows 包装器（自动选 nvm 22.x）
 📦 agentsync/
-  paths.py              五家存储定位 + zcode project_id 规则
+  paths.py              各家存储定位 + zcode project_id 规则
   model.py              归一化 IR + token 估算 + 三层预算裁剪
-  readers.py            五家读取器（全部只读）
+  readers.py            七家读取器（全部只读）
   dshwrite.py           dsh 事件合成 + 多帧 zstd 落盘（幂等+增量）+ 工作区挂载
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档

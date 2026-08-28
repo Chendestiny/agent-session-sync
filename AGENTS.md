@@ -1,6 +1,6 @@
 # AGENTS.md — 跨 Agent 会话同步（给 AI agent 的操作手册）
 
-本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy** 五家 AI agent
+本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode** 七家 AI agent
 的会话记录归一到 **dsh** 继续对话，并可导出 Markdown 归档。
 **zcode 只出不进**（仅读取源；写入方向已移除——双端同对话易混乱，实测亦有兼容问题）。
 你（AI agent）读完本文件即可安全操作，不需要其它上下文。
@@ -85,7 +85,7 @@ cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）
 | `docs/agents/codex.md` | codex 深度规格：rollout JSONL、response_item 映射、subagent 过滤 |
 | `docs/agents/workbuddy.md` | WorkBuddy 深度规格：db+JSONL 双层、读取规则（已实现）、写入配方（未实现） |
 | `examples/` | 示例：真实命令输出转录 + 两条完整转换实例（源→dsh 事件日志 / 源→zcode 数据行） |
-| `agentsync/` | Python 源码（readers 五家读取 / dshwrite 写入+挂载 / model IR / archive / validate；zcodewrite 已废弃保留） |
+| `agentsync/` | Python 源码（readers 七家读取 / dshwrite 写入+挂载 / confirm 人工确认 / syncstate 增量基准 / model IR / archive / validate；zcodewrite 已废弃保留） |
 | `tools/` | Node 22 的 dsh 原生后端校验脚本 |
 | `reference/` | 参考仓库（dsh-chat-import 等；agentctxsync 在 `本地克隆的 agentctxsync 仓库`） |
 | `archive/` | Markdown 归档输出目录 |

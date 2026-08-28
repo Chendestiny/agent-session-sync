@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | **English**
 
-Consolidate chat sessions from **codex / hermes / dsh (DeepSeek Harness) / zcode / workbuddy**
+Consolidate chat sessions from **codex / hermes / dsh (DeepSeek Harness) / zcode / workbuddy / claude code / opencode**
 into **dsh** — any historical session can be imported into dsh and **continued**, plus a unified
 **Markdown archive**. One-way by design: zcode acts as a read-only source (the write direction was
 removed — mirrored conversations on both sides get messy, and live-db writes showed rendering issues).
@@ -34,7 +34,7 @@ pip install zstandard        # the only third-party Python dependency
 nvm use 22                   # optional, for node-based verification
 
 python sync.py selftest                        # sandbox self-test: must be green first
-python sync.py status                          # five-source overview
+python sync.py status                          # seven-source overview
 python sync.py to-dsh                          # interactive: two confirm menus (sources → scope), then dry-run
 python sync.py to-dsh   --source zcode --scope 7d          # flags = the confirmation (zcode, last 7 days)
 python sync.py to-dsh   --source all --scope inc --apply   # ① import into dsh (agents must pass both flags)
@@ -113,7 +113,7 @@ Filters: `--session <id substring>` · `--cwd <path substring>` · `--since <day
 
 Validated against real data before publishing (methods documented, re-runnable on your machine):
 
-- Five-source reading: codex / hermes / dsh / zcode / workbuddy all parse correctly
+- Seven-source reading: codex / hermes / dsh / zcode / workbuddy / claude / opencode all parse correctly
   (tool calls incl. args/results/failures, reasoning, image placeholders)
 - dsh writing: 100% read-back pass via dsh's own JsonlSessionPersistence backend
   (`tools/verify-dsh-backend.cmd`)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""跨 Agent 会话同步 CLI：codex / hermes / dsh / zcode / workbuddy → dsh + Markdown 归档。
+"""跨 Agent 会话同步 CLI：codex / hermes / dsh / zcode / workbuddy / claude / opencode → dsh + Markdown 归档。
 
 zcode 只作为读取源（只出不进：向 zcode 写入会话已移除——双端同对话易混乱，
 且活库写入验证成本高；历史实现保留在 agentsync/zcodewrite.py 供参考）。
@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from agentsync import archive as archive_mod
 from agentsync import confirm, dshwrite, paths, readers, syncstate
 
-ALL_SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy"]
+ALL_SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "claude", "opencode"]
 
 
 def _fmt_ts(ms: int) -> str:
@@ -56,6 +56,12 @@ def load_sources(which: list[str], p: paths.StorePaths):
     if "workbuddy" in which:
         if p.workbuddy_home:
             loaded["workbuddy"] = readers.read_workbuddy(p.workbuddy_home)
+    if "claude" in which:
+        if p.claude_projects:
+            loaded["claude"] = readers.read_claude(p.claude_projects)
+    if "opencode" in which:
+        if p.opencode_db:
+            loaded["opencode"] = readers.read_opencode(p.opencode_db)
     return loaded
 
 
@@ -89,7 +95,7 @@ def _resolve_sources(args) -> list[str]:
     """确认 1/2 · 来源区：显式 --source 即确认；交互终端弹菜单；非交互缺参拒绝。"""
     raw = (getattr(args, "source", "") or "").strip()
     if raw:
-        which = _parse_sources(raw, ["zcode", "hermes", "codex", "workbuddy"])
+        which = _parse_sources(raw, list(confirm.SYNC_SOURCES))
         print(f"✔ 确认 1/2 来源区：{' + '.join(which)}（--source）")
         return which
     if confirm.interactive():
@@ -120,7 +126,9 @@ def cmd_status(args):
     print(f"  hermes db      : {p.hermes_db or '未找到'}")
     print(f"  dsh sessions   : {p.dsh_sessions or '未找到'}")
     print(f"  codex sessions : {p.codex_sessions or '未找到'}")
-    print(f"  workbuddy home  : {p.workbuddy_home or '未找到'}")
+    print(f"  workbuddy home : {p.workbuddy_home or '未找到'}")
+    print(f"  claude projects: {p.claude_projects or '未找到'}")
+    print(f"  opencode db    : {p.opencode_db or '未找到'}")
     if args.verbose:
         return
     loaded = load_sources(ALL_SOURCES, p)
@@ -294,7 +302,7 @@ def cmd_selftest(args):
             turns=turns,
         )
 
-    print("== 1/4 dsh 写入与读回（沙箱根）==")
+    print("== 1/5 dsh 写入与读回（沙箱根）==")
     dsh_root = os.path.join(box, "dsh-root")
     plan = dshwrite.plan_write(dsh_root, fake(), None)
     check(plan["action"] == "create", "plan 首次为 create")
@@ -305,7 +313,7 @@ def cmd_selftest(args):
     back = read_dsh(dsh_root)
     check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "[codex] 自检会话", "读回 1 会话 1 轮带标题（自动来源前缀）")
 
-    print("== 2/4 dsh 增量追加 ==")
+    print("== 2/5 dsh 增量追加 ==")
     plan2 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan2["action"] == "append" and len(plan2["events"]) > 0, f"plan 二次为 append（+{len(plan2['events'])} 事件）")
     dshwrite.apply_write(plan2)
@@ -316,11 +324,11 @@ def cmd_selftest(args):
     plan3 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan3["action"] == "up-to-date", "三次执行为 up-to-date（幂等）")
 
-    print("== 3/4 归档渲染 ==")
+    print("== 3/5 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")
 
-    print("== 4/4 确认与增量（HITL 纯函数）==")
+    print("== 4/5 确认与增量（HITL 纯函数）==")
     from agentsync import confirm as cf
     from agentsync import syncstate
 
@@ -334,7 +342,7 @@ def cmd_selftest(args):
     except SystemExit:
         check(True, "scope: 非法值退出")
     check(cf.parse_sources_answer("2,5") == ["zcode", "workbuddy"], "来源组合 2,5 → zcode+workbuddy")
-    check(cf.parse_sources_answer("") == cf.SYNC_SOURCES, "来源空输入 → 全部（4 源，不含 dsh）")
+    check(cf.parse_sources_answer("") == cf.SYNC_SOURCES, "来源空输入 → 全部（默认同步源全集）")
     check(cf.parse_sources_answer("zcode,workbuddy") == ["zcode", "workbuddy"], "来源名称组合")
 
     base_ms = 1787000000000
@@ -354,6 +362,75 @@ def cmd_selftest(args):
         "cutoff_for：有基准取基准-重叠，无基准 None（首次=全部）",
     )
 
+    print("== 5/5 claude / opencode 读取器（沙箱样本）==")
+    import tempfile
+
+    from agentsync.readers import read_claude, read_opencode
+
+    claude_root = os.path.join(box, "claude", "projects")
+    proj_dir = os.path.join(claude_root, "D--Proj")
+    os.makedirs(proj_dir)
+    c_sid = "11111111-2222-3333-4444-555555555555"
+    c_recs = [
+        {"type": "ai-title", "aiTitle": "配置 Codex 命令启动", "sessionId": c_sid},
+        {"type": "user", "isSidechain": False, "cwd": "D:\\Proj", "timestamp": "2026-08-01T00:00:00.000Z",
+         "message": {"role": "user", "content": "跑一下<system-reminder>别理我</system-reminder>测试"}},
+        {"type": "assistant", "timestamp": "2026-08-01T00:00:01.000Z",
+         "message": {"role": "assistant", "model": "claude-test", "content": [
+             {"type": "thinking", "thinking": "想一想"},
+             {"type": "tool_use", "id": "call_x1", "name": "Bash", "input": {"command": "echo hi"}},
+         ]}},
+        {"type": "user", "timestamp": "2026-08-01T00:00:02.000Z",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "call_x1", "content": "hi", "is_error": False}]}},
+        {"type": "assistant", "timestamp": "2026-08-01T00:00:03.000Z",
+         "message": {"role": "assistant", "model": "claude-test", "content": [{"type": "text", "text": "结果 hi"}]}},
+        {"type": "assistant", "isSidechain": True, "timestamp": "2026-08-01T00:00:04.000Z",
+         "message": {"role": "assistant", "content": [{"type": "text", "text": "子代理输出"}]}},
+        {"type": "queue-operation", "operation": "dequeue", "timestamp": "2026-08-01T00:00:05.000Z"},
+    ]
+    with open(os.path.join(proj_dir, c_sid + ".jsonl"), "w", encoding="utf-8") as f:
+        for r in c_recs:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    smoke_dir = os.path.join(claude_root, "T--tmp-smoke")
+    os.makedirs(smoke_dir)
+    with open(os.path.join(smoke_dir, "99999999-8888-7777-6666-555555555555.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "user", "cwd": os.path.join(tempfile.gettempdir(), "x"),
+                            "timestamp": "2026-08-01T00:00:00.000Z",
+                            "message": {"role": "user", "content": "PONG"}}, ensure_ascii=False) + "\n")
+    cl = read_claude(claude_root)
+    check(len(cl) == 1 and cl[0].source_id == c_sid, "claude：读回 1 会话（TEMP 冒烟整文件跳过）")
+    check(cl[0].title == "配置 Codex 命令启动" and cl[0].cwd == "D:\\Proj", "claude：ai-title + 行内 cwd")
+    check(cl[0].turns[0].prompt == "跑一下测试", "claude：system-reminder 注入已剥")
+    st_c = cl[0].turns[0].steps[0]
+    check(any(b["type"] == "reasoning" for b in st_c.content) and st_c.tool_calls[0]["name"] == "Bash",
+          "claude：thinking + tool_use")
+    check(st_c.tool_results and st_c.tool_results[0].content[0]["text"] == "hi", "claude：tool_result 挂回原 step")
+    check(len(cl[0].turns[0].steps) == 2 and cl[0].turns[0].steps[1].content[0]["text"] == "结果 hi",
+          "claude：文本步在位，子代理/事件行被跳过")
+
+    oc_db = os.path.join(box, "opencode.db")
+    con = sqlite3.connect(oc_db)
+    con.executescript(
+        "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, title TEXT, model TEXT, time_created INTEGER, time_updated INTEGER);"
+        "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);"
+        "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);"
+    )
+    con.execute("INSERT INTO session VALUES ('ses_test0001', 'D:/oc', 'OC 测试', 'gpt-test', 1787000000000, 1787000009000)")
+    con.execute("INSERT INTO message VALUES ('msg_u1', 'ses_test0001', 1787000001000, '{\"role\":\"user\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_u1', 'msg_u1', 'ses_test0001', 1787000001000, '{\"type\":\"text\",\"text\":\"你好 opencode\"}')")
+    con.execute("INSERT INTO message VALUES ('msg_a1', 'ses_test0001', 1787000002000, '{\"role\":\"assistant\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_a1', 'msg_a1', 'ses_test0001', 1787000002000, '{\"type\":\"text\",\"text\":\"收到\"}')")
+    con.execute("INSERT INTO message VALUES ('msg_s1', 'ses_test0001', 1787000003000, '{\"role\":\"compaction\"}')")
+    con.commit()
+    con.close()
+    oc = read_opencode(oc_db)
+    check(len(oc) == 1 and oc[0].title == "OC 测试", "opencode：读回 1 会话")
+    check(oc[0].turns[0].prompt == "你好 opencode" and oc[0].turns[0].steps[0].content[0]["text"] == "收到",
+          "opencode：user→assistant 轮（compaction 消息跳过）")
+    check(oc[0].updated_at == 1787000009000 and oc[0].cwd == "D:/oc" and oc[0].model == "gpt-test",
+          "opencode：updated_at / cwd / model")
+
     if args.keep:
         print(f"\n沙箱保留在：{box}")
     else:
@@ -365,7 +442,7 @@ def cmd_selftest(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 五源 → dsh，单向）")
+    ap = argparse.ArgumentParser(description="跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy/claude/opencode 七源 → dsh，单向）")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("status", help="四源存储概览")
@@ -373,7 +450,7 @@ def main():
     s.set_defaults(fn=cmd_status)
 
     s = sub.add_parser("to-dsh", help="导入到 dsh（可续聊）")
-    s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy；交互缺省时弹菜单")
+    s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode；交互缺省时弹菜单")
     s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量)|7d|30d|任意N天|all(全部历史)；交互缺省时弹菜单")
     s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
@@ -418,7 +495,7 @@ def cmd_prune(args):
     if not p.dsh_sessions:
         sys.exit("未找到 dsh sessions 目录")
     root = args.root or str(p.dsh_sessions)
-    loaded = load_sources(["zcode", "hermes", "codex", "workbuddy"], p)
+    loaded = load_sources(list(confirm.SYNC_SOURCES), p)
     sources = {k: {s.source_id for s in v} for k, v in loaded.items() if v}
     plan = dshwrite.plan_prune(root, sources)
     for cat, label in (("orphans", "孤儿（源会话已删除）"), ("junk", "打招呼/冒烟测试")):

@@ -5,7 +5,7 @@ description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent
 
 # 跨 Agent 会话同步（session-sync）
 
-本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy 五家会话，
+本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / claude / opencode 七家会话，
 写入 dsh（可续聊），并支持 Markdown 归档。
 **详细操作手册见同目录 `AGENTS.md`**（cookbook、安全铁律、故障排查、格式文档地图），
 格式深度规格见 `docs/FORMATS.md`。以下是要点。
@@ -60,7 +60,7 @@ tools/verify-dsh-backend.cmd                           # dsh 原生后端强校�
 ```
 
 两道确认参数（to-dsh 必备；sync-finish 对应 `--sources`/`--scope`）：
-`--source all|zcode,hermes,codex,workbuddy`（确认1 来源区）、
+`--source all|zcode,hermes,codex,workbuddy,claude,opencode`（确认1 来源区）、
 `--scope inc|7d|30d|<N>d|all`（确认2 数据量；inc=仅增量，基准存于
 `~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠）。
 过滤参数（to-dsh / archive 通用）：`--session <源ID子串,逗号分隔>`、`--cwd <路径子串>`、
@@ -73,7 +73,7 @@ tools/verify-dsh-backend.cmd                           # dsh 原生后端强校�
 - **增量**：源会话新增了轮次再执行 to-dsh，只 append 新增轮次的事件（seq 自动续接）。
 - **人在回路**：to-dsh / sync-finish 同步前两道确认——① 来源区（全部/单源/组合）
   ② 数据量（仅增量/最近 N 天/全部历史）。交互弹菜单，非交互参数即确认，缺参拒绝执行。
-- **方向**：只写入 dsh；默认源 = zcode,hermes,codex,workbuddy（不含 dsh 自身）。zcode 只出不进（写入方向已移除）。
+- **方向**：只写入 dsh；默认源 = zcode,hermes,codex,workbuddy,claude,opencode（不含 dsh 自身）。zcode 只出不进（写入方向已移除）。
 - **工作区分区**：导入会话按源 cwd 落入 dsh 对应工作区分组（attach-dsh 挂载）。
   两条编码规则已对全量数据核对（zcode 5/5 工作区、dsh 349/349 会话）。hermes 无 cwd 的旧会话：
   dsh → `_no-cwd` 分组（dsh 原生语义），zcode → 用户主目录工作区。

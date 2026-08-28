@@ -61,7 +61,7 @@ def main():
     # ── 人在回路两道确认（在等待 dsh 退出之前问完）─────────────────
     # --check 只读预览不弹确认（按全源全部历史展示待办全貌）
     if check_only:
-        source_spec = _arg_value("--sources") or "zcode,hermes,codex,workbuddy"
+        source_spec = _arg_value("--sources") or "zcode,hermes,codex,workbuddy,claude,opencode"
         scope_spec = _arg_value("--scope") or "all"
         print("CHECK 模式（只读）：实跑时会先确认 来源区 + 数据量 两道再动手")
     else:
@@ -78,7 +78,7 @@ def main():
     print("=" * 56)
     print("== [1/4] prune：清理孤儿与测试会话")
     print("=" * 56)
-    loaded = S.load_sources(["zcode", "hermes", "codex", "workbuddy"], p)
+    loaded = S.load_sources(list(confirm.SYNC_SOURCES), p)
     sources = {k: {s.source_id for s in v} for k, v in loaded.items() if v}
     plan = dshwrite.plan_prune(root, sources)
     for cat, label in (("orphans", "孤儿"), ("junk", "测试会话")):

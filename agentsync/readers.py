@@ -1,7 +1,9 @@
-"""四家会话存储的读取器：zcode(db.sqlite) / hermes(state.db) / dsh(session.jsonl.zstd) / codex(rollout jsonl)。
+"""各 agent 会话存储的读取器：zcode(db.sqlite) / hermes(state.db) / dsh(session.jsonl.zstd) /
+codex(rollout jsonl) / workbuddy(db+jsonl) / claude(projects jsonl) / opencode(opencode.db)。
 
 全部只读打开（sqlite 走 mode=ro URI），输出统一的 model.Session IR。
-解析规则移植自 dsh-chat-import 的 convert/{zcode,hermes,dsh,codex}.mjs。
+解析规则移植自 dsh-chat-import 的 convert/{zcode,hermes,dsh,codex}.mjs；
+claude / opencode 参考 agentctxsync 的适配器与本机真实数据核对。
 """
 from __future__ import annotations
 
@@ -9,7 +11,9 @@ import glob
 import io
 import json
 import os
+import re
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 
 from .model import Session, Step, ToolResult, Turn
@@ -779,3 +783,313 @@ def _codex_custom_args(inp) -> str:
         return json.dumps(json.loads(literal), ensure_ascii=False)
     except json.JSONDecodeError:
         return json.dumps(literal, ensure_ascii=False)
+
+
+# ── claude 读取器（~/.claude/projects/<cwd转义>/<sessionId>.jsonl）───────
+
+_CLAUDE_STRIP_TAGS = (
+    "system-reminder",
+    "command-name",
+    "command-message",
+    "command-args",
+    "command-contents",
+    "local-command-stdout",
+)
+
+
+def _claude_strip_injection(text: str) -> str:
+    """剥掉 Claude Code 注入的包装（本地命令回显 / 系统提醒）。"""
+    for tag in _CLAUDE_STRIP_TAGS:
+        text = re.sub(rf"<{tag}>.*?</{tag}>", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
+def _claude_user_text(content) -> str:
+    """user 消息里的真实提问文本（注入剥离后为空 = 不是真实提问）。"""
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        text = "\n".join(
+            b["text"]
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)
+        )
+    else:
+        return ""
+    text = _claude_strip_injection(text)
+    # 本地命令包装行（其后紧跟的 local-command-stdout 已被剥掉）不是真实提问
+    if text.startswith("Caveat: The messages below were generated"):
+        return ""
+    return text.strip()
+
+
+def read_claude(projects_dir) -> list[Session]:
+    """Claude Code CLI 会话（projects/<munged-cwd>/<sessionId>.jsonl）。
+
+    - 只认 user/assistant 对话行；queue-operation/progress/attachment 等事件行跳过
+    - isSidechain（子代理）与 isMeta 行跳过（同 zcode 语义过滤思路）
+    - user 行里的 tool_result 块挂回发起它的 assistant step，不单独成轮
+    - ai-title 行 → 会话标题；summary 行 → 压缩摘要
+    - %TEMP% 下的冒烟会话（claude-ping/test、tmp-*）整文件跳过
+    """
+    temp_prefix = os.path.normpath(tempfile.gettempdir()).lower().rstrip("\\/") + os.sep
+    out = []
+    for path in sorted(glob.glob(os.path.join(str(projects_dir), "**", "*.jsonl"), recursive=True)):
+        try:
+            lines = _parse_jsonl(open(path, encoding="utf-8", errors="replace").read())
+        except OSError:
+            continue
+        sid = os.path.splitext(os.path.basename(path))[0]
+        ai_title = ""
+        summaries: list[str] = []
+        cwd = None
+        created = 0
+        model = None
+        turns: list[Turn] = []
+        cur_turn: Turn | None = None
+        last_step: Step | None = None
+        call_steps: dict[str, Step] = {}
+
+        for rec in lines:
+            t = rec.get("type")
+            if t == "ai-title":
+                if isinstance(rec.get("aiTitle"), str) and rec["aiTitle"].strip():
+                    ai_title = rec["aiTitle"].strip()
+                continue
+            if t == "summary":
+                if isinstance(rec.get("summary"), str) and rec["summary"].strip():
+                    summaries.append(rec["summary"].strip())
+                continue
+            if t not in ("user", "assistant"):
+                continue
+            if rec.get("isSidechain") or rec.get("isMeta"):
+                continue
+            if not cwd and isinstance(rec.get("cwd"), str):
+                cwd = rec["cwd"]
+            ts = _ms(rec.get("timestamp"))
+            if not created and ts:
+                created = ts
+            msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
+            content = msg.get("content")
+            role = msg.get("role") or t
+
+            if role == "user":
+                blocks = content if isinstance(content, list) else []
+                # tool_result 块：挂回发起它的 assistant step，不单独成轮
+                for b in blocks:
+                    if not (isinstance(b, dict) and b.get("type") == "tool_result"):
+                        continue
+                    call_id = str(b.get("tool_use_id") or "")
+                    step = call_steps.get(call_id) or last_step
+                    if step is None:
+                        continue
+                    inner = b.get("content")
+                    if isinstance(inner, str):
+                        rb = [{"type": "text", "text": inner}]
+                    elif isinstance(inner, list):
+                        rb = [
+                            {"type": "text", "text": x["text"]}
+                            for x in inner
+                            if isinstance(x, dict) and isinstance(x.get("text"), str)
+                        ]
+                    else:
+                        rb = []
+                    step.tool_results.append(
+                        ToolResult(call_id, rb or [{"type": "text", "text": ""}], bool(b.get("is_error")))
+                    )
+                text = _claude_user_text(content)
+                if not text:
+                    continue  # 纯工具回传 / 注入行：不成轮
+                cur_turn = Turn(prompt=text)
+                turns.append(cur_turn)
+                last_step = None
+                call_steps = {}
+            else:  # assistant
+                if cur_turn is None:
+                    cur_turn = Turn(prompt="")  # 罕见：会话以助手消息开头
+                    turns.append(cur_turn)
+                blocks = content if isinstance(content, list) else [{"type": "text", "text": str(content or "")}]
+                step = Step()
+                m = msg.get("model")
+                if isinstance(m, str) and m:
+                    step.model = m
+                    model = model or m
+                for b in blocks:
+                    if not isinstance(b, dict):
+                        continue
+                    bt = b.get("type")
+                    if bt == "text" and isinstance(b.get("text"), str) and b["text"].strip():
+                        step.content.append({"type": "text", "text": b["text"]})
+                    elif bt == "thinking" and isinstance(b.get("thinking"), str) and b["thinking"].strip():
+                        step.content.append({"type": "reasoning", "text": b["thinking"]})
+                    elif bt == "tool_use":
+                        call_id = str(b.get("id") or f"cl-{sid[-8:]}-{len(turns)}-{len(cur_turn.steps) + 1}")
+                        mapped = {
+                            "id": call_id,
+                            "name": b.get("name") or "unknown",
+                            "arguments": json.dumps(b.get("input") if b.get("input") is not None else {}, ensure_ascii=False),
+                        }
+                        step.content.append({"type": "tool-call", **mapped})
+                        step.tool_calls.append(mapped)
+                        if call_id:
+                            call_steps[call_id] = step
+                if step.content or step.tool_calls:
+                    cur_turn.steps.append(step)
+                    last_step = step
+
+        turns = [tu for tu in turns if tu.steps or tu.prompt]
+        if not turns:
+            continue
+        cwd = cwd or os.path.expanduser("~")
+        if os.path.normpath(cwd).lower().startswith(temp_prefix):
+            continue  # %TEMP% 下的冒烟会话
+        out.append(
+            Session(
+                source="claude",
+                source_id=sid,
+                title=ai_title,
+                cwd=cwd,
+                created_at=created,
+                updated_at=_ms(os.path.getmtime(path)),
+                model=model,
+                summary="\n\n".join(summaries) or None,
+                turns=turns,
+                source_path=path,
+            )
+        )
+    return out
+
+
+# ── opencode 读取器（%LOCALAPPDATA%/opencode/opencode.db）───────────────
+
+
+def _oc_model(raw) -> str | None:
+    """opencode session.model 可能是 'claude-sonnet-4' 或含 modelID 的 JSON。"""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    raw = raw.strip()
+    if raw.startswith("{"):
+        try:
+            d = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(d, dict):
+            mid = d.get("modelID") or (d.get("model") or {}).get("modelID") if isinstance(d.get("model"), dict) else d.get("modelID")
+            if isinstance(mid, str) and mid:
+                return mid
+        return None
+    return raw
+
+
+def read_opencode(db_path) -> list[Session]:
+    """opencode（CLI 与桌面版共享同一 SQLite）：session / message / part 三表。
+
+    解析规则参考 agentctxsync 的 opencode 适配器（读取方向）：
+    - message.data JSON 的 role；agent-switched/model-switched/compaction/step 跳过
+    - part.data：text/input_text/output_text → 文本；reasoning → 思考；
+      tool{tool, state.input/state.output} → 调用+回传同挂一个 step（同 zcode 思路）
+    """
+    p = str(db_path)
+    con = sqlite3.connect(f"file:{p.replace(chr(92), '/')}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(
+            "SELECT id, directory, title, model, time_created, time_updated FROM session ORDER BY time_created"
+        ).fetchall()
+        sessions: list[Session] = []
+        for row in rows:
+            sid = str(row["id"] or "")
+            if not sid:
+                continue
+            msg_rows = con.execute(
+                "SELECT id, time_created, data FROM message WHERE session_id=? ORDER BY time_created",
+                (sid,),
+            ).fetchall()
+            turns: list[Turn] = []
+            cur_turn: Turn | None = None
+            model = _oc_model(row["model"])
+            for mrow in msg_rows:
+                try:
+                    data = json.loads(mrow["data"]) if mrow["data"] else {}
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                role = data.get("role") or data.get("type") or "assistant"
+                if role in ("agent-switched", "model-switched", "compaction", "step"):
+                    continue
+                m_model = data.get("model")
+                if isinstance(m_model, dict):
+                    mid = m_model.get("modelID")
+                    if isinstance(mid, str) and mid:
+                        model = model or mid
+                part_rows = con.execute(
+                    "SELECT data FROM part WHERE message_id=? ORDER BY time_created",
+                    (mrow["id"],),
+                ).fetchall()
+                if role == "user":
+                    texts = []
+                    for prow in part_rows:
+                        try:
+                            part = json.loads(prow["data"]) if prow["data"] else {}
+                        except json.JSONDecodeError:
+                            continue
+                        if part.get("type") in ("text", "input_text") and isinstance(part.get("text"), str):
+                            texts.append(part["text"])
+                    text = _claude_strip_injection("\n".join(texts)).strip()
+                    if not text:
+                        continue
+                    cur_turn = Turn(prompt=text)
+                    turns.append(cur_turn)
+                    continue
+                if cur_turn is None:
+                    cur_turn = Turn(prompt="")
+                    turns.append(cur_turn)
+                step = Step()
+                for prow in part_rows:
+                    try:
+                        part = json.loads(prow["data"]) if prow["data"] else {}
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(part, dict):
+                        continue
+                    ptype = part.get("type")
+                    if ptype in ("text", "output_text") and isinstance(part.get("text"), str) and part["text"].strip():
+                        step.content.append({"type": "text", "text": part["text"]})
+                    elif ptype == "reasoning" and isinstance(part.get("text"), str) and part["text"].strip():
+                        step.content.append({"type": "reasoning", "text": part["text"]})
+                    elif ptype == "tool":
+                        tname = str(part.get("tool") or "unknown")
+                        state = part.get("state") if isinstance(part.get("state"), dict) else {}
+                        inp = state.get("input")
+                        args_text = inp if isinstance(inp, str) else json.dumps(inp if inp is not None else {}, ensure_ascii=False)
+                        call_id = str(part.get("id") or f"oc-{sid[-8:]}-{len(turns)}-{len(cur_turn.steps) + 1}")
+                        mapped = {"id": call_id, "name": tname, "arguments": args_text}
+                        step.content.append({"type": "tool-call", **mapped})
+                        step.tool_calls.append(mapped)
+                        out = state.get("output")
+                        out_text = out if isinstance(out, str) else ("" if out is None else json.dumps(out, ensure_ascii=False))
+                        step.tool_results.append(
+                            ToolResult(call_id, [{"type": "text", "text": out_text}], state.get("status") in ("failed", "error"))
+                        )
+                if step.content or step.tool_calls:
+                    cur_turn.steps.append(step)
+            turns = [tu for tu in turns if tu.steps or tu.prompt]
+            if not turns:
+                continue
+            sessions.append(
+                Session(
+                    source="opencode",
+                    source_id=sid,
+                    title=(row["title"] or "").strip(),
+                    cwd=(row["directory"] or "").strip() or os.path.expanduser("~"),
+                    created_at=_ms(row["time_created"]),
+                    updated_at=_ms(row["time_updated"]),
+                    model=model,
+                    turns=turns,
+                    source_path=p,
+                )
+            )
+        return sessions
+    finally:
+        con.close()

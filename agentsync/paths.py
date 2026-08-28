@@ -1,4 +1,4 @@
-"""四家会话存储的定位与探测。"""
+"""各 agent 会话存储的定位与探测。"""
 from __future__ import annotations
 
 import os
@@ -17,6 +17,8 @@ class StorePaths:
     hermes_db: Path | None = None      # $HERMES_HOME/state.db（Windows %LOCALAPPDATA%/hermes）
     codex_sessions: Path | None = None  # ~/.codex/sessions
     workbuddy_home: Path | None = None  # ~/.workbuddy-ai 或 ~/.workbuddy
+    claude_projects: Path | None = None  # ~/.claude/projects/<cwd转义>/<sessionId>.jsonl
+    opencode_db: Path | None = None    # %LOCALAPPDATA%/opencode/opencode.db（回退 ~/.local/share）
 
 
 def detect() -> StorePaths:
@@ -46,6 +48,20 @@ def detect() -> StorePaths:
     for wb in (home() / ".workbuddy-ai", home() / ".workbuddy"):  # 5.3.x 优先 -ai
         if wb.is_dir() and (wb / "workbuddy.db").exists():
             s.workbuddy_home = wb
+            break
+
+    cp = home() / ".claude" / "projects"
+    s.claude_projects = cp if cp.is_dir() else None
+
+    # opencode: CLI 与桌面版共享同一个 SQLite（agentctxsync 实证 `opencode db path`
+    # 与桌面版一致）。候选：XDG_DATA_HOME → %LOCALAPPDATA% → ~/.local/share。
+    for oc in (
+        Path(os.environ["XDG_DATA_HOME"]) if os.environ.get("XDG_DATA_HOME") else None,
+        Path(os.environ.get("LOCALAPPDATA") or "") / "opencode" / "opencode.db" if os.environ.get("LOCALAPPDATA") else None,
+        home() / ".local" / "share" / "opencode" / "opencode.db",
+    ):
+        if oc and oc.is_file():
+            s.opencode_db = oc
             break
     return s
 

@@ -11,14 +11,14 @@ import re
 import sys
 
 # 默认同步源（dsh 是目标不是源）
-SYNC_SOURCES = ["zcode", "hermes", "codex", "workbuddy"]
+SYNC_SOURCES = ["zcode", "hermes", "codex", "workbuddy", "claude", "opencode"]
 
 # 非交互缺参时的教学文案（sync.py / sync-finish.py 共用）
 NONINTERACTIVE_HELP = (
     "非交互环境无法弹确认菜单：请把两道确认写成显式参数后重跑（参数即确认）——\n"
     "  python sync.py to-dsh --apply --source all --scope inc\n"
     "  python sync-finish.py --sources zcode,workbuddy --scope 7d\n"
-    "  --source/--sources：all 或逗号组合（zcode,hermes,codex,workbuddy）\n"
+    "  --source/--sources：all 或逗号组合（zcode,hermes,codex,workbuddy,claude,opencode）\n"
     "  --scope          ：inc(仅增量) | 7d | 30d | 任意N天(如 14 或 14d) | all(全部历史)"
 )
 
@@ -94,7 +94,7 @@ def prompt_scope() -> dict:
 
 # ── 来源区 sources ───────────────────────────────────────────────────────
 
-_NUM = {"2": "zcode", "3": "hermes", "4": "codex", "5": "workbuddy"}
+_NUM = {str(i + 2): name for i, name in enumerate(SYNC_SOURCES)}  # 菜单编号→来源
 
 
 def parse_sources_answer(ans: str) -> list[str]:
@@ -109,7 +109,7 @@ def parse_sources_answer(ans: str) -> list[str]:
             continue
         name = _NUM.get(tok, tok)
         if name not in SYNC_SOURCES:
-            raise SystemExit(f"未知来源：{tok}（可选 1-5 或 {'/'.join(SYNC_SOURCES)}）")
+            raise SystemExit(f"未知来源：{tok}（可选 1-{len(SYNC_SOURCES) + 1} 或 {'/'.join(SYNC_SOURCES)}）")
         if name not in out:
             out.append(name)
     return sorted(out, key=SYNC_SOURCES.index)
@@ -117,8 +117,8 @@ def parse_sources_answer(ans: str) -> list[str]:
 
 def prompt_sources() -> list[str]:
     print("── 确认 1/2 · 同步哪些来源区 " + "─" * 24)
-    print("  1) 全部（zcode + hermes + codex + workbuddy）  ← 回车默认")
-    print("  2) zcode      3) hermes      4) codex      5) workbuddy")
+    print(f"  1) 全部（{' + '.join(SYNC_SOURCES)}）  ← 回车默认")
+    print("  " + "   ".join(f"{i + 2}) {name}" for i, name in enumerate(SYNC_SOURCES)))
     print("  组合输入编号或名称：如 2,5 或 zcode,workbuddy；q 取消")
     try:
         ans = input("选择 [1]: ")
