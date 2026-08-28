@@ -7,14 +7,9 @@
 单向归一（A→C→B：7 读 + 6 写，而非 7×6 条直连）；**zcode 只出不进**（实测活库写入
 存在时间/渲染兼容问题，写入器已存档）。
 
-```
-codex CLI ─┐                                ─→ dsh（可续聊，幂等+增量）
-hermes    ─┤                                ─→ codex / claude code / hermes / opencode / workbuddy
-dsh       ─┼─→ 归一化 IR（turns）──────────┼─→ Markdown 归档（浏览/搜索）
-zcode     ─┤    （规范库 ~/.session-sync，pull/push 断点续推）
-workbuddy ─┤
-claude / opencode ─┘
-```
+| A · 读取源（7 家） | C · 归一化 | B · 写入目标（6 家 + 归档） |
+|---|---|---|
+| codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy ＋ Markdown 归档（浏览/搜索） |
 
 设计参考 [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import)（MIT，dsh 插件，
 见 `reference/`），写入规格按本机安装的 dsh 0.1.1-rc / zcode 0.16.x 逐字段逆向核实。

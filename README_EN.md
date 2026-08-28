@@ -7,14 +7,9 @@ any historical session can be imported into any of the others and **continued**,
 **Markdown archive**. One-way consolidation (A→C→B: 7 readers + 6 writers, not 7×6 direct pairs);
 **zcode is read-only** (live-db writes showed rendering issues; that writer is archived).
 
-```
-codex CLI ─┐                                  ─→ dsh        (resumable, idempotent + incremental)
-hermes    ─┤                                  ─→ codex / claude code / hermes / opencode / workbuddy
-dsh       ─┼─→ Normalized IR (turns) ────────┼─→ Markdown archive (browse & search)
-zcode     ─┤    (canonical store ~/.session-sync, resumable pull/push)
-workbuddy ─┤
-claude / opencode ─┘
-```
+| A · Sources (7) | C · Normalization | B · Targets (6 + archive) |
+|---|---|---|
+| codex CLI · hermes · dsh · zcode *(read-only)* · workbuddy · claude code · opencode | IR (turns) + canonical store `~/.session-sync` (resumable pull/push) | dsh *(resumable, idempotent + incremental)* · codex · claude code · hermes · opencode · workbuddy + Markdown archive |
 
 > Only dsh is written to. Writing hermes risks cross-process lock contention; codex has been
 > superseded by dsh. The WorkBuddy write recipe is documented in `docs/agents/workbuddy.md` §5
