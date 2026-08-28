@@ -1,4 +1,4 @@
-# hermes 会话结构详解
+﻿# hermes 会话结构详解
 
 核实基线：Hermes Agent 0.19.0（Windows）；db 位于 `%LOCALAPPDATA%\hermes\state.db`（387 MB + WAL）。
 注意：`%LOCALAPPDATA%\hermes\sessions\` 下的 885 个 `request_dump_*.json` 是 LLM 请求调试转储，**不是**会话库。
@@ -87,6 +87,6 @@ tool_calls = [{"id":"tooluse_xxx","call_id":"tooluse_xxx","type":"function",
 
 ## 6. 已知边界
 
-- 2026-05 的旧会话 `cwd` 为 NULL（导入 dsh → `_no-cwd`，导入 zcode → 主目录工作区）；
+- `cwd` 为 NULL（2026-05 旧会话 + headless -z 模式）：**兜底用户主目录**——dsh 侧栏不渲染 `_no-cwd` 分区会话（实测），不兜底则完全不可见；
 - `archived=1` 会话默认仍读取（可用参数过滤）；
 - `system_prompt` 列完整保存了系统提示词（导入时按需作为上下文注入）。
