@@ -170,22 +170,10 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 - ✅ 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
 - ✅ 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
 - ✅ 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
-### ⚠️ 踩坑记录（都已修进代码 + 文档）
+### ⚠️ 踩坑记录
 
-| 坑                                         | 现象                                                  | 修复                                                                                                                          |
-| ------------------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `session/imported` 缺顶层 `ignorable:true` | 整条日志被拒、标题回退、全进未分组                    | 写入器补标记；校验器内置宿主事件词汇表规则                                                                                    |
-| workspace 记录缺 `createdAt/updatedAt`     | dsh 启动直接失败（Zod 校验）                          | apply_attach 写全 5 键；schema 记入 docs/agents/dsh.md                                                                        |
-| 嵌套路径工作区                             | dsh 启动时清理嵌套记录                                | attach 与 dsh 行为一致：嵌套 cwd 不建组                                                                                       |
-| 向 zcode 写入会话                          | 时间显示异常（旧会话显示 1 分钟前）、部分会话渲染空白 | **方向整体移除**（zcode 只出不进）；已导入的 246 个会话已清理（识别规则：sess_+uuid5 版本位=5，备份 db.sqlite.cleanup-bak-*） |
-| projcache 无 title 行                      | 列表不显示标题（显示工作区名），点开才有              | 侧栏标题读投影缓存而非日志；attach-dsh 现在同时回填 title 行                                                                  |
-| 会话 id 命中归档列表                       | 数据四层全对但侧栏不渲染（删除→同 id 复活即隐身）     | prune/删除同步清 archivedSessionIds；复活历史归档需手工移除 id                                                                |
-| 双向同步导致两边列表污染                   | 同一会话两边各一份，续聊即分叉                        | 产品决策改为单向：跨 agent → dsh；to-zcode 移除，写入器存档                                                                   |
-| zcode 写入每会话备份一次                   | 一次导入产生百余个全量备份（23GB）                    | 已改为每次运行备份一次；存量备份已清理                                                                                        |
-| codex resume 列表不认外来 rollout         | 文件落位但 picker 只显示原生会话                      | 0.137 的列表读 `~/.codex/state_N.sqlite` 的 threads 索引；写入器落盘时同步登记 threads 行                                     |
-| hermes 列表显示「0条消息」                | 消息行在库里、格式也对，但 UI 计数为 0                | 列表读 sessions 表计数列；写入器填 message_count/tool_call_count/source 并在追加后实测刷新                                    |
-| opencode 桌面看不到导入会话               | db 三表全对但列表空                                  | 桌面按当前项目上下文圈列表：补 `path` 派生列（directory 去盘符）+ directory 对齐默认项目上下文（取最近原生会话）              |
-| claude 命令坏 shim                         | `claude` 报 claude.exe 不存在                         | 本机可用入口 `~\bin\claude.exe`；删 Program Files\nodejs 下三个 stale shim 可根治（需管理员）                                 |
+12+ 条实测坑（dsh 投影缓存 / codex threads 索引 / hermes 计数列 / opencode 项目上下文等）
+全部修进代码，明细见 **[docs/pitfalls.md](docs/pitfalls.md)**（按家分组，含修复方案）。
 
 ## 📂 目录结构
 

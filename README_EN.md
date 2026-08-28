@@ -126,16 +126,11 @@ Validated against real data before publishing (methods documented, re-runnable o
 - Idempotent + incremental; three-layer budget trimming keeps huge sessions resumable;
   zcode writer passed round-trip regression on a db copy
 
-### ⚠️ Pitfalls (all fixed in code + docs)
+### ⚠️ Pitfalls
 
-| Pitfall | Symptom | Fix |
-|---|---|---|
-| `session/imported` missing top-level `ignorable:true` | whole log rejected, titles fall back, everything ungrouped | writer emits the flag; validator embeds the host event vocabulary |
-| workspace record missing `createdAt/updatedAt` | dsh fails to boot (Zod validation) | apply_attach writes all 5 keys; schema captured in docs/agents/dsh.md |
-| nested-path workspaces | dsh startup prunes those records | attach mirrors dsh: nested cwds don't create groups |
-| writing sessions into zcode | wrong timestamps / blank renders | direction removed entirely (see README top); write kept as archived reference only |
-| projcache missing title row | no list title until opened | sidebar reads the projection cache; attach-dsh now backfills title rows |
-| bidirectional sync pollutes both lists | duplicated forks on both sides | product decision: one-way to dsh |
+All measured pitfalls (dsh projection cache / codex threads index / hermes count columns /
+opencode project context …) are fixed in code — full breakdown in
+**[docs/pitfalls.md](docs/pitfalls.md)** (grouped per agent, with fixes).
 
 ## 📂 Layout
 

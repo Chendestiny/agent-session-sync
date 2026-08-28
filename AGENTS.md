@@ -82,6 +82,7 @@ cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）
 | `SKILL.md` | 同样内容的 skill 封装（装到 `~/.agents/skills/session-sync/` 后可一句话触发） |
 | `README.md` | 人类视角的项目说明、验证记录 |
 | `docs/FORMATS.md` | 格式总览 + 归一化 IR + 索引（先看这个再进分册） |
+| `docs/pitfalls.md` | **踩坑总录**（按家分组，全部已修进代码；排障先查这里） |
 | `docs/agents/dsh.md` | dsh 深度规格：多帧 zstd、事件纪律、目录编码、workspace.json 分组挂载 |
 | `docs/agents/zcode.md` | zcode 深度规格：三表结构、message/part 模板、project_id（读取源；写入器已弃用存档） |
 | `docs/agents/hermes.md` | hermes 深度规格：state.db 两表、三种 role 形态、已知边界 |
