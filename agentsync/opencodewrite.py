@@ -176,9 +176,13 @@ def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[di
                 )
                 status = "failed" if tr.is_error else "completed"
             t_ms = ms + k
-            # 原生 state 完整键：status/input/output/metadata/title/time（缺一过不了 zod）
+            # 原生 state 完整键：status/input/output/metadata/title/time（缺一过不了 zod）。
+            # ToolState 是按 status 的可辨识联合——failed 分支要求 error 键等其他形状；
+            # 务实映射：失败也按 completed 形状写（输出文本保留，空则标注）。
+            if tr is not None and tr.is_error and not out_text:
+                out_text = "(failed)"
             state = {
-                "status": status,
+                "status": "completed",
                 "input": _tool_input_obj(args_text),
                 "output": out_text,
                 "metadata": {"truncated": False},
@@ -193,10 +197,10 @@ def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[di
                 x.get("text", "") for x in tr.content if isinstance(x, dict) and isinstance(x.get("text"), str)
             )
             t_ms = ms + k
-            status = "failed" if tr.is_error else "completed"
+            out_txt = out_text if (out_text or not tr.is_error) else "(failed)"
             out.append(({"role": "assistant", "time": {"created": t_ms}},
                         [{"type": "tool", "tool": "tool", "callID": tr.tool_call_id,
-                          "state": {"status": status, "input": {}, "output": out_text,
+                          "state": {"status": "completed", "input": {}, "output": out_txt,
                                     "metadata": {"truncated": False}, "title": "tool",
                                     "time": {"start": t_ms, "end": t_ms}}}]))
         if texts:
