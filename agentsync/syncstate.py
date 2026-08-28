@@ -17,13 +17,13 @@ import time
 OVERLAP_MS = 15 * 60 * 1000
 
 
-def state_path(dsh_root) -> str:
-    return os.path.join(str(dsh_root), ".agentsync-state.json")
+def state_path(dsh_root, filename: str = ".agentsync-state.json") -> str:
+    return os.path.join(str(dsh_root), filename)
 
 
-def load(dsh_root) -> dict:
+def load(dsh_root, filename: str = ".agentsync-state.json") -> dict:
     """{source: last_sync_ms}；无文件/损坏返回 {}。"""
-    path = state_path(dsh_root)
+    path = state_path(dsh_root, filename)
     if not os.path.exists(path):
         return {}
     try:
@@ -33,10 +33,10 @@ def load(dsh_root) -> dict:
         return {}
 
 
-def mark(dsh_root, sources: list[str]) -> None:
+def mark(dsh_root, sources: list[str], filename: str = ".agentsync-state.json") -> None:
     """把给定源的增量基准推进到当前时刻（其余源保留原值）。"""
-    path = state_path(dsh_root)
-    state = load(dsh_root)
+    path = state_path(dsh_root, filename)
+    state = load(dsh_root, filename)
     now = int(time.time() * 1000)
     for src in sources:
         state[src] = max(state.get(src, 0), now)

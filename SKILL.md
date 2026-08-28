@@ -57,6 +57,10 @@ python sync.py to-codex --source all --scope inc --apply   # 反向写入 codex�
 python sync.py to-claude --source all --scope inc --apply  # 反向写入 claude code
 python sync.py to-hermes --source all --scope inc --apply  # 反向写入 hermes
 # 非 dsh 目标的『全部』默认含 dsh 自身（dsh 会话反向流出）；zcode 只读不可写（实证渲染 bug）
+python sync.py pull --source all --scope inc      # A→C：各源 → 规范库 ~/.session-sync（安全，免退出任何应用）
+python sync.py push --target codex --source all --scope inc --apply   # C→B：断点续推（中途换 agent 可继续）
+# 架构 A→C→B：7 reader + 4 writer = 7×2 个适配器（而不是 7×6=42 条直连）；
+# C 是本地纯一份规范副本（IR 全保真，工具往返不丢），pull 只读源、push 才写 agent
 python sync.py attach-dsh                              # 挂分组+回填侧栏标题缓存（--apply 前必须退出 dsh）
 python sync.py archive --source all --apply            # Markdown 归档到 ./archive
 python sync.py prune                                   # 清理孤儿/打招呼会话（--apply 前退出 dsh，移入 ~/.trash-dsh 可恢复）

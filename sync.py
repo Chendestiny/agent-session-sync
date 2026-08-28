@@ -9,6 +9,8 @@ zcode 只作为读取源（只出不进：向 zcode 写入会话已移除——�
   python sync.py to-dsh   [--source ...] [--scope inc|7d|30d|Nd|all] [--apply] ...
       # 人在回路两道确认：交互终端未指定时弹菜单（来源区 → 数据量）；
       # 非交互（agent/脚本）必须显式给 --source/--scope（参数即确认），缺失拒绝执行
+  python sync.py pull  [--source ...] [--scope ...]        # 各源 → 规范库 ~/.session-sync（安全，免退出）
+  python sync.py push --target codex [--source] [--scope] [--apply]   # 规范库 → 目标（断点续推）
   python sync.py attach-dsh [--apply]            # 挂工作区分组（需退出 dsh）
   python sync.py archive  [--source all] [--apply]
   python sync.py verify   [--root PATH]
@@ -154,30 +156,62 @@ def cmd_status(args):
         if st:
             parts = [f"{k} {_fmt_ts(v)}" for k, v in sorted(st.items())]
             print("  上次同步（增量基准）：" + " · ".join(parts))
+    # 规范库 C 总览（存在才显示）
+    from agentsync import store
+
+    if store.store_exists():
+        ov = store.overview()
+        counts = " · ".join(f"{k} {v}" for k, v in sorted(ov["counts"].items())) or "（空）"
+        print(f"\n== 规范库 C：{ov['dir']} ==")
+        print(f"  会话：{counts}")
+        if ov["state"]:
+            parts = [f"{k} {_fmt_ts(v)}" for k, v in sorted(ov["state"].items())]
+            print("  pull 基准：" + " · ".join(parts))
+        for tgt, stt in sorted(ov["push"].items()):
+            parts = [f"{k} {_fmt_ts(v)}" for k, v in sorted(stt.items())]
+            print(f"  push 水位[{tgt}]：" + " · ".join(parts))
 
 
-def _run_sink(args, name: str, get_store, writer):
+def _compute_cutoffs(scope: dict, which: list[str], state: dict) -> tuple[dict[str, int | None], list[str]]:
+    """数据量确认 → 每源增量下界；返回 (cutoffs, 首次无基准源列表)。"""
+    cutoffs: dict[str, int | None] = {}
+    if scope["kind"] == "days":
+        c = int(time.time() * 1000) - scope["days"] * 86400000
+        cutoffs = {src: c for src in which}
+        print(f"数据量过滤：{confirm.scope_label(scope)}（活跃时间 ≥ {datetime.fromtimestamp(c / 1000).strftime('%m-%d %H:%M')}）")
+    elif scope["kind"] == "inc":
+        for src in which:
+            cutoffs[src] = syncstate.cutoff_for(state, src)
+    first = [src for src in which if cutoffs.get(src) is None] if scope["kind"] == "inc" else []
+    return cutoffs, first
+
+
+def _run_sink(args, name: str, get_store, writer, loader=None, state_dir=None, state_file=None, include_dsh=None):
     """通用写入目标执行器：两道确认 → 历史拦截 → 增量过滤 → plan/apply → 推进基准。
 
     dsh/codex/claude 的 root 是目录；hermes 的 root 是 state.db 文件
-    （增量基准与墓碑落其所在目录）。
+    （增量基准与墓碑落其所在目录）。push 模式：loader 读规范库 C，
+    state_dir/state_file 指向 C 内每目标水位文件（断点续推的根基）。
     """
     p = paths.detect()
     store = get_store(p)
     if not store:
         sys.exit(f"未找到 {name} 会话存储")
-    which = _resolve_sources(args, include_dsh=(name != "dsh"))
+    if include_dsh is None:
+        include_dsh = name != "dsh"
+    which = _resolve_sources(args, include_dsh=include_dsh)
     scope = _resolve_scope(args)
     root = args.root or str(store)
-    state_root = root if os.path.isdir(root) else os.path.dirname(root)
+    s_root = state_dir or (root if os.path.isdir(root) else os.path.dirname(root))
+    fname = state_file or ".agentsync-state.json"
     titles = {}
     tfile = getattr(args, "titles", None)
     if tfile:
         titles = json.load(open(tfile, encoding="utf-8"))
         print(f"标题覆盖：{len(titles)} 条（来自 {tfile}）")
-    loaded = load_sources(which, p)
+    loaded = (loader or load_sources)(which, p)
     # 数据量确认 → 每源增量下界（None = 不过滤：全部历史 / 首次增量）
-    state = syncstate.load(state_root)
+    state = syncstate.load(s_root, fname)
     # 人工拦截：历史全量（scope=all，或 inc 首跑无基准）在 --apply 时必须显式确认——
     # 交互弹 y/N（默认 N=取消）；非交互必须由人显式给 --confirm-history，否则拒绝。
     full_sources = confirm.history_full_sources(scope, which, state, available=set(loaded))
@@ -189,17 +223,9 @@ def _run_sink(args, name: str, get_store, writer):
             sys.exit(confirm.NONINTERACTIVE_HISTORY_HELP)
     elif full_sources and getattr(args, "confirm_history", False):
         print(f"⚠ 历史全量：{'+'.join(full_sources)} 已由 --confirm-history 显式确认")
-    cutoffs: dict[str, int | None] = {}
-    if scope["kind"] == "days":
-        c = int(time.time() * 1000) - scope["days"] * 86400000
-        cutoffs = {src: c for src in which}
-        print(f"数据量过滤：{confirm.scope_label(scope)}（活跃时间 ≥ {datetime.fromtimestamp(c / 1000).strftime('%m-%d %H:%M')}）")
-    elif scope["kind"] == "inc":
-        for src in which:
-            cutoffs[src] = syncstate.cutoff_for(state, src)
-        first = [src for src in which if cutoffs[src] is None]
-        if first:
-            print(f"仅增量：{'/'.join(first)} 首次运行无基准，按全部历史处理")
+    cutoffs, first = _compute_cutoffs(scope, which, state)
+    if first:
+        print(f"仅增量：{'/'.join(first)} 首次运行无基准，按全部历史处理")
     total = planned = applied = 0
     for src in which:
         sessions = _filter(loaded.get(src, []), args)
@@ -229,8 +255,77 @@ def _run_sink(args, name: str, get_store, writer):
     print(f"\n{mode}：共 {total} 个候选，{planned} 个待写入，{applied} 个已写入（target={name} root={root}）")
     if args.apply:
         done = [src for src in which if src in loaded]
-        syncstate.mark(state_root, done)
+        syncstate.mark(s_root, done, fname)
         print(f"增量基准已推进：{'/'.join(done)}（下次『仅增量』从这里起算）")
+
+
+def cmd_pull(args):
+    """pull：各源 → 规范库 C（~/.session-sync）。只读各 agent、只写 C——
+    无需退出任何应用，历史全量也不拦截（C 是内部规范库，不触碰 agent 存储）。
+    """
+    from agentsync import store
+
+    p = paths.detect()
+    which = _resolve_sources(args, include_dsh=True)
+    scope = _resolve_scope(args)
+    c_dir = store.store_dir()
+    loaded = load_sources(which, p)
+    if "dsh" in loaded:
+        loaded["dsh"] = store.native_only(loaded["dsh"])  # import-* 不回流（防环形复制）
+    state = syncstate.load(c_dir)
+    cutoffs, first = _compute_cutoffs(scope, which, state)
+    if first:
+        print(f"仅增量：{'/'.join(first)} 首次运行无基准，按全部历史处理")
+    tomb = dshwrite.load_tombstones(c_dir)
+    total = created = updated = ok = skipped = 0
+    for src in which:
+        sessions = _filter(loaded.get(src, []), args)
+        c = cutoffs.get(src)
+        if c is not None:
+            sessions = syncstate.apply_cutoff(sessions, c)
+        for sess in sessions:
+            total += 1
+            label = (sess.title or sess.turns[0].prompt[:24] if sess.turns else "")[:32]
+            if sess.source_id in tomb:
+                skipped += 1
+                continue
+            r = store.write_session(sess)
+            if r == "create":
+                created += 1
+            elif r == "update":
+                updated += 1
+            else:
+                ok += 1
+            if r != "up-to-date":
+                print(f"  [{r:13}] {src}:{sess.source_id} 「{label}」")
+    print(f"\nPULL：共 {total} 个候选，新增 {created}，更新 {updated}，无变化 {ok}，墓碑拦 {skipped}（C={c_dir}）")
+    syncstate.mark(c_dir, [s for s in which if s in loaded])
+    print("pull 基准已推进（下次『仅增量』从这里起算）")
+
+
+def cmd_push(args):
+    """push：规范库 C → 目标 agent。幂等断点续推（C 内每目标水位文件）；
+    写 agent 存储照旧两道确认 + 历史全量拦截；换任何 agent 重跑自动从断点继续。
+    """
+    from agentsync import claudewrite, codexwrite, hermeswrite, store
+
+    if not store.store_exists():
+        sys.exit("规范库 C 为空：先跑 python sync.py pull")
+    writers = {"dsh": dshwrite, "codex": codexwrite, "claude": claudewrite, "hermes": hermeswrite}
+    getters = {
+        "dsh": lambda p: p.dsh_sessions,
+        "codex": lambda p: p.codex_sessions,
+        "claude": lambda p: p.claude_projects,
+        "hermes": lambda p: p.hermes_db,
+    }
+    target = args.target
+    _run_sink(
+        args, f"push:{target}", getters[target], writers[target],
+        loader=lambda which, p: store.read_store(which),
+        state_dir=store.store_dir(),
+        state_file=f"push-{target}-state.json",
+        include_dsh=(target != "dsh"),
+    )
 
 
 def cmd_to_dsh(args):
@@ -350,7 +445,7 @@ def cmd_selftest(args):
             turns=turns,
         )
 
-    print("== 1/6 dsh 写入与读回（沙箱根）==")
+    print("== 1/7 dsh 写入与读回（沙箱根）==")
     dsh_root = os.path.join(box, "dsh-root")
     plan = dshwrite.plan_write(dsh_root, fake(), None)
     check(plan["action"] == "create", "plan 首次为 create")
@@ -361,7 +456,7 @@ def cmd_selftest(args):
     back = read_dsh(dsh_root)
     check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "[codex] 自检会话", "读回 1 会话 1 轮带标题（自动来源前缀）")
 
-    print("== 2/6 dsh 增量追加 ==")
+    print("== 2/7 dsh 增量追加 ==")
     plan2 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan2["action"] == "append" and len(plan2["events"]) > 0, f"plan 二次为 append（+{len(plan2['events'])} 事件）")
     dshwrite.apply_write(plan2)
@@ -393,11 +488,11 @@ def cmd_selftest(args):
     tb3 = dshwrite.plan_title_backfill(dsh_root)
     check(sid_key in tb3["backfill"], "identity 失配且 title 一致时仍重建条目（回归）")
 
-    print("== 3/6 归档渲染 ==")
+    print("== 3/7 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")
 
-    print("== 4/6 确认与增量（HITL 纯函数）==")
+    print("== 4/7 确认与增量（HITL 纯函数）==")
     from agentsync import confirm as cf
     from agentsync import syncstate
 
@@ -440,7 +535,7 @@ def cmd_selftest(args):
     check(cf.history_full_sources({"kind": "days", "days": 7}, ["zcode"], {}) == [],
           "历史拦截：天数窗口（有界）不命中")
 
-    print("== 5/6 claude / opencode 读取器（沙箱样本）==")
+    print("== 5/7 claude / opencode 读取器（沙箱样本）==")
     import tempfile
 
     from agentsync.readers import read_claude, read_opencode
@@ -509,7 +604,7 @@ def cmd_selftest(args):
     check(oc[0].updated_at == 1787000009000 and oc[0].cwd == "D:/oc" and oc[0].model == "gpt-test",
           "opencode：updated_at / cwd / model")
 
-    print("== 6/6 反向写入器（codex / claude / hermes 沙箱回路）==")
+    print("== 6/7 反向写入器（codex / claude / hermes 沙箱回路）==")
     from agentsync import claudewrite, codexwrite, hermeswrite
     from agentsync.readers import read_claude, read_codex, read_hermes
 
@@ -557,6 +652,35 @@ def cmd_selftest(args):
     check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "hermes：追加后含工具调用")
     check(hermeswrite.plan_write(hm_db, fake(v2=True), None)["action"] == "up-to-date", "hermes：三次 up-to-date")
 
+    print("== 7/7 规范库 C（存储层 + push 全链路）==")
+    from agentsync import store as st_mod
+
+    os.environ["SESSION_SYNC_HOME"] = os.path.join(box, "session-sync")
+    try:
+        check(st_mod.write_session(fake()) == "create", "C：首次写入 create")
+        check(st_mod.write_session(fake()) == "up-to-date", "C：重复写入 up-to-date")
+        st_mod.write_session(fake(v2=True))
+        check(st_mod.write_session(fake()) == "up-to-date", "C：旧版本不回退（已有 2 轮 >= 源 1 轮）")
+        back_c = st_mod.read_store(["codex"])
+        check(set(back_c) == {"codex"} and len(back_c["codex"]) == 1, "C：按源读取")
+        s_c = back_c["codex"][0]
+        check(len(s_c.turns) == 2 and bool(s_c.turns[1].steps[0].tool_calls and s_c.turns[1].steps[0].tool_results),
+              "C：IR 全保真（工具调用+回传往返）")
+        cx_push = os.path.join(box, "codex-push")
+        plan_p = codexwrite.plan_write(cx_push, s_c, None)
+        check(plan_p["action"] == "create", "push：C→codex 计划 create")
+        codexwrite.apply_write(plan_p)
+        back_p = read_codex(cx_push)
+        check(len(back_p) == 1 and len(back_p[0].turns) == 2 and bool(back_p[0].turns[1].steps[0].tool_calls),
+              "push：C→codex→读回 全链路")
+        fake_dsh = fake()
+        fake_dsh.source = "dsh"
+        fake_dsh.source_id = "import-abc"
+        check(len(st_mod.native_only([fake_dsh])) == 0 and len(st_mod.native_only([fake_dsh, fake()])) == 1,
+              "C：dsh import-* 过滤（防环形复制）")
+    finally:
+        del os.environ["SESSION_SYNC_HOME"]
+
     if args.keep:
         print(f"\n沙箱保留在：{box}")
     else:
@@ -593,6 +717,24 @@ def main():
             s.add_argument("--titles", default=None, help="标题覆盖 JSON 文件：{源会话ID: 新标题}（配合 --force 重写生效）")
         _filter_args(s)
         s.set_defaults(fn=fn)
+
+    s = sub.add_parser("pull", help="各源 → 规范库 ~/.session-sync（只读源、只写 C，无需退出任何应用）")
+    s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合（pull 的 all 含 dsh 原生会话）")
+    s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（C 为内部库，全量不拦截）")
+    _filter_args(s)
+    s.set_defaults(fn=cmd_pull)
+
+    s = sub.add_parser("push", help="规范库 C → 目标 agent（幂等断点续推，中途换 agent 可继续）")
+    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes"], help="推送目标")
+    s.add_argument("--source", default="", help="来源区（确认1/2）：C 里哪些源推过去")
+    s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（写 agent 存储，全量需确认）")
+    s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
+    s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
+    s.add_argument("--root", default=None, help="覆盖目标存储路径（测试用）")
+    s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")
+    s.add_argument("--force", action="store_true", help="已存在的导入会话整体重写（修复损坏导入用）")
+    _filter_args(s)
+    s.set_defaults(fn=cmd_push)
 
     s = sub.add_parser("archive", help="导出 Markdown 归档")
     s.add_argument("--source", default="all", help="逗号分隔或 all")
