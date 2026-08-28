@@ -40,7 +40,7 @@
 | 坑 | 现象 | 修复 |
 |---|---|---|
 | 缺 `path` 派生列 | db 三表全对但桌面列表不显示 | `path = directory 去盘符`（`C:/Users/x` → `Users/x`，真库实证） |
-| directory 与当前项目不匹配 | 同上（补了 path 仍看不到） | 桌面按**当前项目上下文**圈列表；写入器默认对齐默认项目上下文（取最近原生会话的 directory） |
+| directory 与当前项目不匹配 | 补了 path 仍看不到 / 全堆在 Default Project | 分区规则：cwd 真实存在 → 会话落自己的分区（找/建 project；桌面自建的分区自动复用）；缺失 → 兜底默认上下文（global）。默认上下文取 global 分区 time_created 最新会话的 directory（不能用 time_updated——force 重写会推高它造成漂移） |
 | session.model 裸字符串 | opencode JSON 解析 model 列会炸 | 必须写 JSON：`{"id","providerID":"opencode","variant":"default"}` |
 | force 重写不清旧消息 | 确定性 uuid5 id 撞 message 主键 | force=create 时先 DELETE 旧 message/part 再写 |
 

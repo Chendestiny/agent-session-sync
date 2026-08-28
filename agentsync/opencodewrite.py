@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 import uuid
 
 from .dshwrite import load_tombstones
@@ -41,16 +42,38 @@ def _norm_dir(d: str) -> str:
 
 
 def _default_context(cur) -> str:
-    """桌面默认项目上下文（实测：桌面按当前项目圈会话列表，导入会话对齐它才可见）：
-    取最近一条原生会话的 directory；无则 ~/Documents/Default Project；再退 ~。"""
+    """桌面默认项目上下文：取 global 分区里 time_created 最新的会话 directory
+    （用 time_created 而非 time_updated——force 重写会推高 time_updated 造成漂移）；
+    无则 ~/Documents/Default Project；再退 ~。"""
     try:
-        r = cur.execute("SELECT directory FROM session ORDER BY time_updated DESC LIMIT 1").fetchone()
+        r = cur.execute(
+            "SELECT directory FROM session WHERE project_id='global' ORDER BY time_created DESC LIMIT 1"
+        ).fetchone()
         if r and r[0]:
             return r[0]
     except sqlite3.OperationalError:
         pass
     dp = os.path.expanduser("~/Documents/Default Project")
     return dp if os.path.isdir(dp) else os.path.expanduser("~")
+
+
+def _ensure_project(cur, directory: str) -> str:
+    """为 directory 找/建 project 分区（桌面按 project 圈会话列表）。
+
+    规则（实测）：cwd 真实存在 → 会话落自己的分区（无对应 project 则建一个
+    worktree=directory 的行）；cwd 缺失或等于默认上下文 → global（Default Project）。
+    """
+    pid = _resolve_project(cur, directory)
+    if pid not in ("global", None):
+        return pid
+    now_ms = int(time.time() * 1000)
+    new_id = "prj_" + uuid.uuid4().hex[:20]
+    cur.execute(
+        "INSERT INTO project (id, name, worktree, vcs, time_created, time_updated, sandboxes) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (new_id, None, directory, None, now_ms, now_ms, "[]"),
+    )
+    return new_id
 
 
 def _derived_path(directory: str) -> str:
@@ -183,8 +206,11 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
         plan["existingTurns"] = have
         if exists and have >= len(turns) and not force:
             return {**plan, "action": "up-to-date"}
-        # 对齐桌面默认项目上下文（源 cwd 不直接当 directory，否则不在当前项目视图里不显示）
-        directory = _default_context(cur)
+        # 分区规则：cwd 真实存在 → 落自己的分区（找不到 project 就建）；缺失/无效 → 兜底默认上下文
+        if sess.cwd and os.path.isdir(sess.cwd):
+            directory = sess.cwd.replace("\\", "/")
+        else:
+            directory = _default_context(cur)
         plan["session_row"] = {
             "id": sid,
             "project_id": _resolve_project(cur, directory),
@@ -220,21 +246,26 @@ def apply_write(plan: dict) -> str:
         while slug in taken:
             slug = f"{_slugify(s['title'])[:56]}-{n}"
             n += 1
+        # 找/建分区 project：默认上下文与根工作台保持 global，其余目录自建分区
+        default_ctx = _default_context(cur)
+        project_id = _resolve_project(cur, s["directory"])
+        if project_id == "global" and _norm_dir(s["directory"]) not in ("/", _norm_dir(default_ctx)):
+            project_id = _ensure_project(cur, s["directory"])
         if exists:
             if plan["action"] == "create":
                 # force 整体重写：清旧消息/部件，否则确定性 uuid5 id 会撞主键
                 cur.execute("DELETE FROM part WHERE session_id=?", (s["id"],))
                 cur.execute("DELETE FROM message WHERE session_id=?", (s["id"],))
             cur.execute(
-                "UPDATE session SET title=?, directory=?, path=?, slug=?, time_updated=? WHERE id=?",
-                (s["title"], s["directory"], _derived_path(s["directory"]), slug, now_ms, s["id"]),
+                "UPDATE session SET title=?, directory=?, path=?, project_id=?, slug=?, time_updated=? WHERE id=?",
+                (s["title"], s["directory"], _derived_path(s["directory"]), project_id, slug, now_ms, s["id"]),
             )
         else:
             cur.execute(
                 "INSERT INTO session (id, project_id, parent_id, slug, directory, path, title, version, "
                 "time_created, time_updated, cost, tokens_input, tokens_output, tokens_reasoning, "
                 "tokens_cache_read, tokens_cache_write, agent, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (s["id"], s["project_id"], None, slug, s["directory"], _derived_path(s["directory"]),
+                (s["id"], project_id, None, slug, s["directory"], _derived_path(s["directory"]),
                  s["title"], _VERSION,
                  s["time_created"] or now_ms, s["time_updated"] or now_ms,
                  0.0, 0, 0, 0, 0, 0, "build",

@@ -711,7 +711,8 @@ def cmd_selftest(args):
     os.makedirs(os.path.dirname(ocw_db), exist_ok=True)
     con = sqlite3.connect(ocw_db)
     con.executescript(
-        "CREATE TABLE project (id TEXT PRIMARY KEY, name TEXT, worktree TEXT);"
+        "CREATE TABLE project (id TEXT PRIMARY KEY, name TEXT, worktree TEXT, vcs TEXT, "
+        "time_created INTEGER, time_updated INTEGER, sandboxes TEXT);"
         "INSERT INTO project(id,name,worktree) VALUES('global',NULL,'/');"
         "CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, parent_id TEXT, slug TEXT NOT NULL, "
         "directory TEXT NOT NULL, title TEXT NOT NULL, version TEXT NOT NULL, share_url TEXT, "
@@ -750,6 +751,21 @@ def cmd_selftest(args):
     opencodewrite.apply_write(pf)
     backf = read_opencode(ocw_db)
     check(len(backf[0].turns) == 2 and len(backf[0].turns) == 2, "opencode：force 重写不重复（清旧消息）")
+    # 分区：cwd 真实存在 → 自建 project 分区；缺失 → 兜底默认上下文（global）
+    fake_part = fake()
+    fake_part.source_id = "selftest-part-0001"
+    part_dir = os.path.join(box, "part-dir")
+    os.makedirs(part_dir, exist_ok=True)
+    fake_part.cwd = part_dir
+    opencodewrite.apply_write(opencodewrite.plan_write(ocw_db, fake_part, None))
+    con = sqlite3.connect(ocw_db)
+    prow = con.execute(
+        "SELECT s.project_id, p.worktree FROM session s LEFT JOIN project p ON p.id=s.project_id WHERE s.directory=?",
+        (part_dir.replace(chr(92), "/"),),
+    ).fetchone()
+    con.close()
+    check(prow is not None and prow[0] != "global" and prow[1] == part_dir.replace(chr(92), "/"),
+          "opencode：存在的 cwd 落自建分区 project")
 
     wb_home = os.path.join(box, "wb-home")
     os.makedirs(os.path.join(wb_home, "projects"), exist_ok=True)
