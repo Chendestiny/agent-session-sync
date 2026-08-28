@@ -543,7 +543,7 @@ def cmd_selftest(args):
     os.makedirs(os.path.dirname(hm_db), exist_ok=True)
     con = sqlite3.connect(hm_db)
     con.executescript(
-        "CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, cwd TEXT, started_at REAL, ended_at REAL, model TEXT, archived INTEGER DEFAULT 0);"
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT DEFAULT '', title TEXT, cwd TEXT, started_at REAL, ended_at REAL, model TEXT, archived INTEGER DEFAULT 0);"
         "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL, reasoning TEXT);"
     )
     con.commit()
