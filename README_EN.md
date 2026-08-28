@@ -35,8 +35,9 @@ nvm use 22                   # optional, for node-based verification
 
 python sync.py selftest                        # sandbox self-test: must be green first
 python sync.py status                          # five-source overview
-python sync.py to-dsh   --source zcode         # dry-run plan
-python sync.py to-dsh   --source zcode --apply # ① import into dsh
+python sync.py to-dsh                          # interactive: two confirm menus (sources → scope), then dry-run
+python sync.py to-dsh   --source zcode --scope 7d          # flags = the confirmation (zcode, last 7 days)
+python sync.py to-dsh   --source all --scope inc --apply   # ① import into dsh (agents must pass both flags)
 # ② fully quit dsh, then: attach to workspace groups + backfill sidebar title cache
 python sync.py attach-dsh --apply
 # ③ start dsh: imported sessions appear under their workspace groups, resumable
@@ -48,7 +49,12 @@ tools\verify-dsh-backend.cmd                   # strong check via dsh's own back
 
 > **The full dsh loop = import (to-dsh) + group & titles (attach-dsh) + restart dsh.** Skipping step ②
 > leaves sessions in "ungrouped" with no list titles until opened. Bulk-rename titles: edit `titles.json`,
-> then `python sync.py to-dsh --apply --force --titles titles.json --budget 550000`.
+> then `python sync.py to-dsh --source all --scope all --apply --force --titles titles.json --budget 550000`.
+>
+> Human-in-the-loop: every sync (to-dsh / sync-finish.py) asks two confirmations —
+> ① source scope (all / zcode,workbuddy / ...) ② data scope (inc / 7d / 30d / N days / all).
+> Interactive terminals get menus; non-interactive runs must pass `--source` + `--scope`
+> explicitly (flags = the confirmation; missing flags abort).
 >
 > Agent-facing manual: **AGENTS.md** is the complete entry point (cookbook / safety rules /
 > troubleshooting / upgrade adaptation) — hand it to any agent.

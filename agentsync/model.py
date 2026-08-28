@@ -93,6 +93,7 @@ class Session:
     title: str = ""
     cwd: str | None = None
     created_at: int = 0            # 毫秒
+    updated_at: int = 0            # 最后活跃（毫秒；0=未知，增量过滤时退 created_at）
     model: str | None = None
     system_prompt: str | None = None
     summary: str | None = None     # 源侧压缩摘要（zcode compaction）

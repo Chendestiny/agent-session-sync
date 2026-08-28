@@ -74,9 +74,9 @@ def read_zcode(db_path, include_subagents: bool = False) -> list[Session]:
         sessions = []
         parent_filter = "WHERE parent_id IS NULL" if not include_subagents else ""
         session_rows = cur.execute(
-            f"SELECT id, directory, title, time_created FROM session {parent_filter} ORDER BY time_created"
+            f"SELECT id, directory, title, time_created, time_updated FROM session {parent_filter} ORDER BY time_created"
         ).fetchall()
-        for sid, directory, title, created in session_rows:
+        for sid, directory, title, created, updated in session_rows:
             msgs = list(
                 cur.execute(
                     "SELECT id, data FROM message WHERE session_id=? ORDER BY sequence", (sid,)
@@ -182,6 +182,7 @@ def read_zcode(db_path, include_subagents: bool = False) -> list[Session]:
                     title=(title or "").strip(),
                     cwd=directory,
                     created_at=_ms(created),
+                    updated_at=_ms(updated),
                     model=None,
                     summary="\n\n".join(compaction_summaries) or None,
                     turns=turns,
@@ -222,7 +223,11 @@ def read_hermes(db_path, include_archived: bool = True) -> list[Session]:
             turns: list[Turn] = []
             call_steps: dict[str, Step] = {}
             cur_turn: Turn | None = None
+            last_active = 0
             for role, content, tool_call_id, tool_calls, reasoning, ts in msgs:
+                t_ms = _ms(ts) if ts else 0
+                if t_ms > last_active:
+                    last_active = t_ms
                 if role == "user":
                     text = _hermes_user_text(content)
                     if text:
@@ -280,6 +285,7 @@ def read_hermes(db_path, include_archived: bool = True) -> list[Session]:
                     title=(title or "").strip(),
                     cwd=cwd,
                     created_at=_ms(started),
+                    updated_at=last_active or _ms(started),
                     model=model,
                     turns=turns,
                     source_path=str(db_path),
@@ -621,6 +627,7 @@ def read_workbuddy(home, include_deleted: bool = False) -> list[Session]:
                 title=str(title).strip(),
                 cwd=str(cwd),
                 created_at=_ms(row["created_at"]),
+                updated_at=_ms(row["updated_at"]),
                 model=row["model"],
                 turns=turns,
                 source_path=primary if copies else db,
@@ -726,6 +733,7 @@ def read_codex(sessions_dir) -> list[Session]:
                 title="",
                 cwd=cwd,
                 created_at=created,
+                updated_at=_ms(os.path.getmtime(path)),
                 model=model,
                 turns=turns,
                 source_path=path,

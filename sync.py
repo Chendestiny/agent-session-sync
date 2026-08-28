@@ -5,8 +5,10 @@ zcode 只作为读取源（只出不进：向 zcode 写入会话已移除——�
 且活库写入验证成本高；历史实现保留在 agentsync/zcodewrite.py 供参考）。
 
 用法：
-  python sync.py status                          # 五源概览
-  python sync.py to-dsh   [--source ...] [--apply] [--budget N] [--titles F] [--force]
+  python sync.py status                          # 五源概览（含各源上次同步时间）
+  python sync.py to-dsh   [--source ...] [--scope inc|7d|30d|Nd|all] [--apply] ...
+      # 人在回路两道确认：交互终端未指定时弹菜单（来源区 → 数据量）；
+      # 非交互（agent/脚本）必须显式给 --source/--scope（参数即确认），缺失拒绝执行
   python sync.py attach-dsh [--apply]            # 挂工作区分组（需退出 dsh）
   python sync.py archive  [--source all] [--apply]
   python sync.py verify   [--root PATH]
@@ -20,12 +22,13 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agentsync import archive as archive_mod
-from agentsync import dshwrite, paths, readers
+from agentsync import confirm, dshwrite, paths, readers, syncstate
 
 ALL_SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy"]
 
@@ -72,11 +75,42 @@ def _filter(sessions: list, args) -> list:
 
 
 def _parse_sources(raw: str, defaults: list[str]) -> list[str]:
+    raw = (raw or "").strip()
+    if raw in ("all", "*", "全部"):
+        return list(defaults)
     which = [s.strip() for s in raw.split(",") if s.strip()]
     for s in which:
         if s not in ALL_SOURCES:
             sys.exit(f"未知来源：{s}（可选 {ALL_SOURCES}）")
     return which or defaults
+
+
+def _resolve_sources(args) -> list[str]:
+    """确认 1/2 · 来源区：显式 --source 即确认；交互终端弹菜单；非交互缺参拒绝。"""
+    raw = (getattr(args, "source", "") or "").strip()
+    if raw:
+        which = _parse_sources(raw, ["zcode", "hermes", "codex", "workbuddy"])
+        print(f"✔ 确认 1/2 来源区：{' + '.join(which)}（--source）")
+        return which
+    if confirm.interactive():
+        which = confirm.prompt_sources()
+        print(f"✔ 确认 1/2 来源区：{' + '.join(which)}")
+        return which
+    sys.exit(confirm.NONINTERACTIVE_HELP)
+
+
+def _resolve_scope(args) -> dict:
+    """确认 2/2 · 数据量：显式 --scope 即确认；交互终端弹菜单；非交互缺参拒绝。"""
+    raw = (getattr(args, "scope", "") or "").strip()
+    if raw:
+        scope = confirm.parse_scope(raw)
+        print(f"✔ 确认 2/2 数据量：{confirm.scope_label(scope)}（--scope {confirm.scope_spec(scope)}）")
+        return scope
+    if confirm.interactive():
+        scope = confirm.prompt_scope()
+        print(f"✔ 确认 2/2 数据量：{confirm.scope_label(scope)}")
+        return scope
+    sys.exit(confirm.NONINTERACTIVE_HELP)
 
 
 def cmd_status(args):
@@ -104,22 +138,43 @@ def cmd_status(args):
     if p.dsh_sessions:
         imported = [s for s in loaded.get("dsh", []) if s.source_id.startswith("import-")]
         print(f"\n  dsh 中 import-* 会话：{len(imported)} 个（由同步工具/插件导入）")
+        st = syncstate.load(p.dsh_sessions)
+        if st:
+            parts = [f"{k} {_fmt_ts(v)}" for k, v in sorted(st.items())]
+            print("  上次同步（增量基准）：" + " · ".join(parts))
 
 
 def cmd_to_dsh(args):
     p = paths.detect()
     if not p.dsh_sessions:
         sys.exit("未找到 dsh sessions 目录")
-    which = _parse_sources(args.source, ["zcode", "hermes", "codex", "workbuddy"])
+    which = _resolve_sources(args)
+    scope = _resolve_scope(args)
     root = args.root or str(p.dsh_sessions)
     titles = {}
     if args.titles:
         titles = json.load(open(args.titles, encoding="utf-8"))
         print(f"标题覆盖：{len(titles)} 条（来自 {args.titles}）")
     loaded = load_sources(which, p)
+    # 数据量确认 → 每源增量下界（None = 不过滤：全部历史 / 首次增量）
+    state = syncstate.load(root)
+    cutoffs: dict[str, int | None] = {}
+    if scope["kind"] == "days":
+        c = int(time.time() * 1000) - scope["days"] * 86400000
+        cutoffs = {src: c for src in which}
+        print(f"数据量过滤：{confirm.scope_label(scope)}（活跃时间 ≥ {datetime.fromtimestamp(c / 1000).strftime('%m-%d %H:%M')}）")
+    elif scope["kind"] == "inc":
+        for src in which:
+            cutoffs[src] = syncstate.cutoff_for(state, src)
+        first = [src for src in which if cutoffs[src] is None]
+        if first:
+            print(f"仅增量：{'/'.join(first)} 首次运行无基准，按全部历史处理")
     total = planned = applied = 0
     for src in which:
         sessions = _filter(loaded.get(src, []), args)
+        c = cutoffs.get(src)
+        if c is not None:
+            sessions = syncstate.apply_cutoff(sessions, c)
         for sess in sessions:
             total += 1
             plan = dshwrite.plan_write(root, sess, budget=args.budget, force=args.force, titles=titles)
@@ -140,6 +195,10 @@ def cmd_to_dsh(args):
                     applied += 1
     mode = "APPLY" if args.apply else "DRY-RUN（--apply 落盘）"
     print(f"\n{mode}：共 {total} 个候选，{planned} 个待写入，{applied} 个已写入（root={root}）")
+    if args.apply:
+        done = [src for src in which if src in loaded]
+        syncstate.mark(root, done)
+        print(f"增量基准已推进：{'/'.join(done)}（下次『仅增量』从这里起算）")
 
 
 def cmd_archive(args):
@@ -235,7 +294,7 @@ def cmd_selftest(args):
             turns=turns,
         )
 
-    print("== 1/3 dsh 写入与读回（沙箱根）==")
+    print("== 1/4 dsh 写入与读回（沙箱根）==")
     dsh_root = os.path.join(box, "dsh-root")
     plan = dshwrite.plan_write(dsh_root, fake(), None)
     check(plan["action"] == "create", "plan 首次为 create")
@@ -246,7 +305,7 @@ def cmd_selftest(args):
     back = read_dsh(dsh_root)
     check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "[codex] 自检会话", "读回 1 会话 1 轮带标题（自动来源前缀）")
 
-    print("== 2/3 dsh 增量追加 ==")
+    print("== 2/4 dsh 增量追加 ==")
     plan2 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan2["action"] == "append" and len(plan2["events"]) > 0, f"plan 二次为 append（+{len(plan2['events'])} 事件）")
     dshwrite.apply_write(plan2)
@@ -257,9 +316,43 @@ def cmd_selftest(args):
     plan3 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan3["action"] == "up-to-date", "三次执行为 up-to-date（幂等）")
 
-    print("== 3/3 归档渲染 ==")
+    print("== 3/4 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")
+
+    print("== 4/4 确认与增量（HITL 纯函数）==")
+    from agentsync import confirm as cf
+    from agentsync import syncstate
+
+    check(cf.parse_scope("inc")["kind"] == "inc", "scope: inc")
+    check(cf.parse_scope("all") == {"kind": "all", "days": None}, "scope: all")
+    check(cf.parse_scope("14d") == {"kind": "days", "days": 14}, "scope: 14d")
+    check(cf.parse_scope("14")["days"] == 14, "scope: 14（无 d 后缀）")
+    try:
+        cf.parse_scope("abc")
+        check(False, "scope: 非法值应退出")
+    except SystemExit:
+        check(True, "scope: 非法值退出")
+    check(cf.parse_sources_answer("2,5") == ["zcode", "workbuddy"], "来源组合 2,5 → zcode+workbuddy")
+    check(cf.parse_sources_answer("") == cf.SYNC_SOURCES, "来源空输入 → 全部（4 源，不含 dsh）")
+    check(cf.parse_sources_answer("zcode,workbuddy") == ["zcode", "workbuddy"], "来源名称组合")
+
+    base_ms = 1787000000000
+    s_old = fake()
+    s_old.updated_at = base_ms - 10 * 86400000
+    s_new = fake()
+    s_new.updated_at = base_ms - 1000
+    kept = syncstate.apply_cutoff([s_old, s_new], base_ms - 7 * 86400000)
+    check(len(kept) == 1 and kept[0] is s_new, "cutoff 过滤：只留 7 天内活跃")
+    st_dir = os.path.join(box, "state-root")
+    os.makedirs(st_dir, exist_ok=True)
+    syncstate.mark(st_dir, ["zcode"])
+    st = syncstate.load(st_dir)
+    check("zcode" in st and st["zcode"] > 0, "状态文件 mark/load 往返")
+    check(
+        syncstate.cutoff_for(st, "zcode") is not None and syncstate.cutoff_for(st, "hermes") is None,
+        "cutoff_for：有基准取基准-重叠，无基准 None（首次=全部）",
+    )
 
     if args.keep:
         print(f"\n沙箱保留在：{box}")
@@ -280,7 +373,8 @@ def main():
     s.set_defaults(fn=cmd_status)
 
     s = sub.add_parser("to-dsh", help="导入到 dsh（可续聊）")
-    s.add_argument("--source", default="", help="逗号分隔：zcode,hermes,dsh,codex（默认 zcode,hermes,codex）")
+    s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy；交互缺省时弹菜单")
+    s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量)|7d|30d|任意N天|all(全部历史)；交互缺省时弹菜单")
     s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
     s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")
@@ -315,10 +409,8 @@ def main():
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
     s.set_defaults(fn=cmd_prune)
 
-    args = ap.parse_args()
-    if getattr(args, "source", None) == "all":
-        args.source = ",".join(ALL_SOURCES)
-    args.fn(args)
+    ns = ap.parse_args()
+    ns.fn(ns)
 
 
 def cmd_prune(args):

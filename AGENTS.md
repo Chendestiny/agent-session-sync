@@ -1,4 +1,4 @@
-﻿# AGENTS.md — 跨 Agent 会话同步（给 AI agent 的操作手册）
+# AGENTS.md — 跨 Agent 会话同步（给 AI agent 的操作手册）
 
 本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy** 五家 AI agent
 的会话记录归一到 **dsh** 继续对话，并可导出 Markdown 归档。
@@ -33,7 +33,7 @@ python sync.py selftest
 **dsh 侧完整闭环（顺序不能乱）**：
 
 ```bash
-python sync.py to-dsh --source zcode,hermes,codex,workbuddy --apply --budget 550000   # ① 导入
+python sync.py to-dsh --source all --scope inc --apply --budget 550000   # ① 导入（两道确认=参数；终端交互会弹菜单）
 # ② 完全退出 dsh（含后台进程），然后（挂分组 + 回填侧栏标题缓存）：
 python sync.py attach-dsh --apply                                           # ② 挂分组 + 回填侧栏标题缓存
 # ③ 启动 dsh → import-* 会话出现在对应分组，可 resume 续聊
@@ -44,20 +44,22 @@ python sync.py attach-dsh --apply                                           # �
 | 任务 | 命令 |
 |---|---|
 | 看各 agent 源概览 | `python sync.py status` |
-| 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source zcode,hermes,codex,workbuddy` 然后 `--apply --budget 550000` |
+| 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
 | 挂工作区分组 + 标题预投影 | **退出 dsh 后** `python sync.py attach-dsh --apply`（改 workspace.json + 回填 projcache title 行，均先备份） |
-| 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --apply --force --titles titles.json --budget 550000` → 重启 dsh |
+| 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --source all --scope all --apply --force --titles titles.json --budget 550000` → 重启 dsh |
 | 只同步某个会话 | 加 `--session <源ID子串>`（如 `--session sess_07c4`） |
 | 只同步某个工作区 | 加 `--cwd frontend`（子串匹配） |
-| 只同步最近 7 天 | 加 `--since 7` |
+| 只要最近数据 | 确认2 用 `--scope 7d`（按最后活跃时间，推荐）；旧参数 `--since 7` 按创建时间过滤，仍可用 |
 | 超长会话防超上下文 | `to-dsh` 加 `--budget 200000`（三层裁剪保续聊） |
 | Markdown 归档 | `python sync.py archive --source all --apply` → `archive/` |
 | 清理孤儿/测试会话 | **退出 dsh 后** `python sync.py prune --apply`（dry-run 先看；孤儿=源已删的导入，junk=纯打招呼/冒烟；移入 `~/.trash-dsh` 可恢复，manifest.jsonl 有明细） |
 | 校验已导入的 dsh 会话 | `python sync.py verify` |
-| 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（prune+导入+挂载+校验全自动）；`--check` 只读预览 |
+| 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（先弹两道确认→prune+导入+挂载+校验；`--sources zcode --scope 7d` 参数即确认）；`--check` 只读预览 |
 | dsh 原生后端强校验 | `tools\verify-dsh-backend.cmd`（Node 22） |
 
-**同步语义**：幂等（重复跑自动去重）；增量（源会话长了再跑 `to-dsh` 只追加新轮次）；
+**同步语义**：幂等（重复跑自动去重）；增量（源会话长了再跑 `to-dsh` 只追加新轮次；
+`--scope inc` 基准存于 `~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠）；
+**人在回路**（to-dsh / sync-finish 先确认 ①来源区 ②数据量：交互弹菜单、非交互参数即确认缺参拒绝）；
 导入会话按源工作区自动落分区。落盘后可见性：dsh 需 attach + 重启。
 预期留在 dsh「未分组」的：源会话无 cwd（hermes 旧库）、cwd 目录已删除、临时目录、
 cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）。

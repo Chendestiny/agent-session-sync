@@ -119,8 +119,9 @@ nvm use 22                   # node 相关校验用（可选）
 
 python sync.py selftest                        # 沙箱自检：全绿再动真数据
 python sync.py status                          # 各 agent 源概览
-python sync.py to-dsh   --source zcode         # dry-run 计划
-python sync.py to-dsh   --source zcode --apply # ① 导入到 dsh
+python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
+python sync.py to-dsh   --source zcode --scope 7d          # 参数即确认：zcode + 最近 7 天
+python sync.py to-dsh   --source all --scope inc --apply   # ① 导入到 dsh（agent/脚本必给两参）
 # ② 完全退出 dsh 后：挂工作区分组 + 回填侧栏标题缓存（新会话进分组且列表直接带标题）
 python sync.py attach-dsh --apply
 # ③ 启动 dsh：import-* 会话出现在对应工作区分组，可 resume 续聊
@@ -128,13 +129,14 @@ python sync.py attach-dsh --apply
 python sync.py archive  --source all --apply   # Markdown 归档 → ./archive
 python sync.py verify                          # 校验已导入 dsh 会话
 python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
-python sync-finish.py                           # 一键收尾：退出 dsh 后跑一次=prune+导入+挂载+校验全自动
+python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
+python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
 tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校验（Node 22）
 ```
 
 > **dsh 侧完整闭环 = 导入(to-dsh) + 挂分组与标题缓存(attach-dsh) + 重启 dsh。** 只导入不做第②步，
 > 会话会堆在「未分组」且列表不显示标题（点开才有）。批量改标题：编辑 `titles.json` 后
-> `python sync.py to-dsh --apply --force --titles titles.json --budget 550000`。
+> `python sync.py to-dsh --source all --scope all --apply --force --titles titles.json --budget 550000`。
 >
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
