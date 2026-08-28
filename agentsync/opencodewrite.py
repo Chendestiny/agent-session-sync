@@ -270,9 +270,7 @@ def _write_events(cur, s: dict, slug: str, project_id: str, feed: list, now_ms: 
         emit("message.updated.1", {"sessionID": sid, "info": minfo})
         for pid, pt, pms in plist:
             part = {"id": pid, "sessionID": sid, "messageID": mid}
-            part.update(pt)
-            if pt.get("type") == "reasoning":
-                part.setdefault("time", {"start": pms})
+            part.update(pt)  # pt 已含 time{start,end}
             emit("message.part.updated.1", {"sessionID": sid, "part": part, "time": pms})
     final = dict(sess_info)
     final["agent"] = "build"
@@ -362,6 +360,11 @@ def apply_write(plan: dict) -> str:
             )
             plist = []
             for pi, pt in enumerate(parts or [{"type": "text", "text": ""}]):
+                pt = dict(pt)
+                # 服务端 zod 要求 part 带 time（原生 reasoning 有 {start,end}，text 实测
+                # 表里可缺但 API 必需）——统一补 {start,end}，事件对象同源共享
+                if "time" not in pt:
+                    pt["time"] = {"start": ms, "end": ms}
                 pid = "prt_" + uuid.uuid5(_NS, f"{mid}:{pi}:{pt.get('type')}").hex[:26]
                 cur.execute(
                     "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) "
