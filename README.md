@@ -1,4 +1,4 @@
-﻿# 🔄 跨 Agent 同步会话（agentsync）
+# 🔄 跨 Agent 同步会话（agentsync）
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
@@ -24,10 +24,44 @@ workbuddy ─┘
 
 ## 🚀 快速开始
 ### 🗣️ 对任意 agent 一句话开始（零手动配置）
-把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
+按你的平台，把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
+
+Windows（PowerShell）：
 
 ```text
 帮我安装 agent-session-sync：irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
+```
+
+Linux / macOS / WSL：
+
+```text
+帮我安装 agent-session-sync：curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.sh | bash
+```
+
+> WSL/Linux 下自动只发现**该系统内**安装的 agent（如 `~/.codex`、`~/.dsh`）；
+> zcode / hermes / workbuddy 装在 Windows 侧的，请在 Windows 上跑同步。
+
+### 🐌 GitHub 访问慢 / 不能翻墙？
+
+**办法一：手动下载 zip（最稳，安装过程零联网）**
+
+1. 任何能访问的时刻下载仓库 zip：仓库页 `Code` → `Download ZIP`，
+   或用加速链（镜像站不保证长期可用，任选当时能下载的）：
+   `https://ghfast.top/https://github.com/Chendestiny/agent-session-sync/archive/refs/heads/main.zip`
+2. 解压 zip，进入 `agent-session-sync-main` 目录执行（脚本检测到旁边的 `sync.py` 就地安装，不再联网）：
+   - Windows：`powershell -ExecutionPolicy Bypass -File .\install.ps1`
+   - Linux / macOS / WSL：`bash install.sh`
+3. 也可以完全不用脚本：把解压目录整个复制为 `~/.agents/skills/session-sync`
+   （Windows 即 `%USERPROFILE%\.agents\skills\session-sync`），效果等价。
+
+**办法二：镜像前缀在线装**（脚本支持 `ASS_GH_PREFIX` 环境变量拼在下载地址前；脚本本体仍需能访问 raw.githubusercontent.com，不行就用办法一）
+
+```powershell
+$env:ASS_GH_PREFIX = 'https://ghfast.top/'; irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.sh | ASS_GH_PREFIX=https://ghfast.top/ bash
 ```
 
 安装脚本会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
