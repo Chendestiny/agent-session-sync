@@ -123,6 +123,20 @@ def _count_user_turns(cur, sid: str) -> int:
     return n
 
 
+def _tool_input_obj(args_text: str):
+    """state.input 必须是对象（服务端 zod：Expected object）——JSON 字符串解析为 dict，
+    解析不了退 {"raw": 原文}。"""
+    if isinstance(args_text, dict):
+        return args_text
+    try:
+        v = json.loads(args_text) if isinstance(args_text, str) and args_text.strip() else {}
+    except (json.JSONDecodeError, TypeError):
+        v = None
+    if isinstance(v, dict):
+        return v
+    return {"raw": str(args_text or "")}
+
+
 def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[dict, list[dict]]]:
     """一个 IR 轮 → [(message.data, [part.data...]), ...]。"""
     ms = base_ms + idx * 1000
@@ -163,7 +177,7 @@ def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[di
                 status = "failed" if tr.is_error else "completed"
             out.append(({"role": "assistant", "time": {"created": ms + k}},
                         [{"type": "tool", "tool": name, "callID": cid,
-                          "state": {"input": args_text, "output": out_text, "status": status}}]))
+                          "state": {"input": _tool_input_obj(args_text), "output": out_text, "status": status}}]))
         for tr in results.values():  # 没有对应调用的孤儿结果
             k += 1
             out_text = "\n".join(
@@ -171,7 +185,7 @@ def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[di
             )
             out.append(({"role": "assistant", "time": {"created": ms + k}},
                         [{"type": "tool", "tool": "tool", "callID": tr.tool_call_id,
-                          "state": {"input": "", "output": out_text,
+                          "state": {"input": {}, "output": out_text,
                                     "status": "failed" if tr.is_error else "completed"}}]))
         if texts:
             k += 1
