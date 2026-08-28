@@ -93,6 +93,8 @@ python sync.py attach-dsh --apply
 
 python sync.py archive  --source all --apply   # Markdown 归档 → ./archive
 python sync.py verify                          # 校验已导入 dsh 会话
+python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
+python sync-finish.py                           # 一键收尾：退出 dsh 后跑一次=prune+导入+挂载+校验全自动
 tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校验（Node 22）
 ```
 

@@ -54,6 +54,7 @@ python sync.py attach-dsh --apply                                           # �
 | Markdown 归档 | `python sync.py archive --source all --apply` → `archive/` |
 | 清理孤儿/测试会话 | **退出 dsh 后** `python sync.py prune --apply`（dry-run 先看；孤儿=源已删的导入，junk=纯打招呼/冒烟；移入 `~/.trash-dsh` 可恢复，manifest.jsonl 有明细） |
 | 校验已导入的 dsh 会话 | `python sync.py verify` |
+| 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（prune+导入+挂载+校验全自动）；`--check` 只读预览 |
 | dsh 原生后端强校验 | `tools\verify-dsh-backend.cmd`（Node 22） |
 
 **同步语义**：幂等（重复跑自动去重）；增量（源会话长了再跑 `to-dsh` 只追加新轮次）；

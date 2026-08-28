@@ -497,7 +497,12 @@ def read_workbuddy(home, include_deleted: bool = False) -> list[Session]:
     con = sqlite3.connect(f"file:{db.replace(chr(92), '/')}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     try:
-        where = "" if include_deleted else "WHERE deleted_at IS NULL"
+        conds = [] if include_deleted else ["deleted_at IS NULL"]
+        # playground 会话是 WorkBuddy 的"试验场"，其 UI 正式列表不显示——
+        # 同步默认排除（对齐源侧可见集；实测 36 未删中 16 个 playground）
+        if not include_deleted:
+            conds.append("is_playground = 0")
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         rows = con.execute(
             f"SELECT id, cwd, title, custom_title, created_at, updated_at, model FROM sessions {where}"
         ).fetchall()
