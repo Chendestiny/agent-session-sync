@@ -38,6 +38,7 @@ python sync.py status                          # seven-source overview
 python sync.py to-dsh                          # interactive: two confirm menus (sources → scope), then dry-run
 python sync.py to-dsh   --source zcode --scope 7d          # flags = the confirmation (zcode, last 7 days)
 python sync.py to-dsh   --source all --scope inc --apply   # ① import into dsh (agents must pass both flags)
+python sync.py to-codex --source zcode --scope inc --apply  # reverse write into codex (to-claude / to-hermes alike)
 # ② fully quit dsh, then: attach to workspace groups + backfill sidebar title cache
 python sync.py attach-dsh --apply
 # ③ start dsh: imported sessions appear under their workspace groups, resumable

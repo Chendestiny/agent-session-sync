@@ -123,6 +123,7 @@ python sync.py status                          # 各 agent 源概览
 python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
 python sync.py to-dsh   --source zcode --scope 7d          # 参数即确认：zcode + 最近 7 天
 python sync.py to-dsh   --source all --scope inc --apply   # ① 导入到 dsh（agent/脚本必给两参）
+python sync.py to-codex --source zcode --scope inc --apply  # 反向写入 codex（to-claude/to-hermes 同款）
 # ② 完全退出 dsh 后：挂工作区分组 + 回填侧栏标题缓存（新会话进分组且列表直接带标题）
 python sync.py attach-dsh --apply
 # ③ 启动 dsh：import-* 会话出现在对应工作区分组，可 resume 续聊

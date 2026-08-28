@@ -91,11 +91,15 @@ def _parse_sources(raw: str, defaults: list[str]) -> list[str]:
     return which or defaults
 
 
-def _resolve_sources(args) -> list[str]:
-    """确认 1/2 · 来源区：显式 --source 即确认；交互终端弹菜单；非交互缺参拒绝。"""
+def _resolve_sources(args, include_dsh: bool = False) -> list[str]:
+    """确认 1/2 · 来源区：显式 --source 即确认；交互终端弹菜单；非交互缺参拒绝。
+
+    非 dsh 目标默认全集含 dsh 自身（dsh 会话反向流出）；dsh 目标不含 dsh。
+    """
+    defaults = list(confirm.SYNC_SOURCES) + (["dsh"] if include_dsh else [])
     raw = (getattr(args, "source", "") or "").strip()
     if raw:
-        which = _parse_sources(raw, list(confirm.SYNC_SOURCES))
+        which = _parse_sources(raw, defaults)
         print(f"✔ 确认 1/2 来源区：{' + '.join(which)}（--source）")
         return which
     if confirm.interactive():
@@ -152,20 +156,28 @@ def cmd_status(args):
             print("  上次同步（增量基准）：" + " · ".join(parts))
 
 
-def cmd_to_dsh(args):
+def _run_sink(args, name: str, get_store, writer):
+    """通用写入目标执行器：两道确认 → 历史拦截 → 增量过滤 → plan/apply → 推进基准。
+
+    dsh/codex/claude 的 root 是目录；hermes 的 root 是 state.db 文件
+    （增量基准与墓碑落其所在目录）。
+    """
     p = paths.detect()
-    if not p.dsh_sessions:
-        sys.exit("未找到 dsh sessions 目录")
-    which = _resolve_sources(args)
+    store = get_store(p)
+    if not store:
+        sys.exit(f"未找到 {name} 会话存储")
+    which = _resolve_sources(args, include_dsh=(name != "dsh"))
     scope = _resolve_scope(args)
-    root = args.root or str(p.dsh_sessions)
+    root = args.root or str(store)
+    state_root = root if os.path.isdir(root) else os.path.dirname(root)
     titles = {}
-    if args.titles:
-        titles = json.load(open(args.titles, encoding="utf-8"))
-        print(f"标题覆盖：{len(titles)} 条（来自 {args.titles}）")
+    tfile = getattr(args, "titles", None)
+    if tfile:
+        titles = json.load(open(tfile, encoding="utf-8"))
+        print(f"标题覆盖：{len(titles)} 条（来自 {tfile}）")
     loaded = load_sources(which, p)
     # 数据量确认 → 每源增量下界（None = 不过滤：全部历史 / 首次增量）
-    state = syncstate.load(root)
+    state = syncstate.load(state_root)
     # 人工拦截：历史全量（scope=all，或 inc 首跑无基准）在 --apply 时必须显式确认——
     # 交互弹 y/N（默认 N=取消）；非交互必须由人显式给 --confirm-history，否则拒绝。
     full_sources = confirm.history_full_sources(scope, which, state, available=set(loaded))
@@ -196,11 +208,12 @@ def cmd_to_dsh(args):
             sessions = syncstate.apply_cutoff(sessions, c)
         for sess in sessions:
             total += 1
-            plan = dshwrite.plan_write(root, sess, budget=args.budget, force=args.force, titles=titles)
+            plan = writer.plan_write(root, sess, budget=args.budget, force=args.force, titles=titles)
             tag = plan["action"]
+            n_units = len(plan.get("events") or plan.get("lines") or plan.get("rows") or [])
             extra = ""
             if tag == "append":
-                extra = f"（源 {plan['sourceTurns']} 轮 > 已有 {plan['existingTurns']} 轮，追加 {len(plan['events'])} 事件）"
+                extra = f"（源 {plan['sourceTurns']} 轮 > 已有 {plan['existingTurns']} 轮，追加 {n_units} 单元）"
             elif tag == "create":
                 extra = f"（{plan['stats']['messages']} 消息 / {plan['stats']['toolCalls']} 工具调用）"
             elif tag == "skip-deleted":
@@ -209,15 +222,39 @@ def cmd_to_dsh(args):
             if tag in ("create", "append"):
                 planned += 1
                 if args.apply:
-                    msg = dshwrite.apply_write(plan)
-                    print(f"      └─ applied: {msg} -> {plan['path']}")
+                    msg = writer.apply_write(plan)
+                    print(f"      └─ applied: {msg}")
                     applied += 1
     mode = "APPLY" if args.apply else "DRY-RUN（--apply 落盘）"
-    print(f"\n{mode}：共 {total} 个候选，{planned} 个待写入，{applied} 个已写入（root={root}）")
+    print(f"\n{mode}：共 {total} 个候选，{planned} 个待写入，{applied} 个已写入（target={name} root={root}）")
     if args.apply:
         done = [src for src in which if src in loaded]
-        syncstate.mark(root, done)
+        syncstate.mark(state_root, done)
         print(f"增量基准已推进：{'/'.join(done)}（下次『仅增量』从这里起算）")
+
+
+def cmd_to_dsh(args):
+    from agentsync import dshwrite as _w
+
+    _run_sink(args, "dsh", lambda p: p.dsh_sessions, _w)
+
+
+def cmd_to_codex(args):
+    from agentsync import codexwrite as _w
+
+    _run_sink(args, "codex", lambda p: p.codex_sessions, _w)
+
+
+def cmd_to_claude(args):
+    from agentsync import claudewrite as _w
+
+    _run_sink(args, "claude", lambda p: p.claude_projects, _w)
+
+
+def cmd_to_hermes(args):
+    from agentsync import hermeswrite as _w
+
+    _run_sink(args, "hermes", lambda p: p.hermes_db, _w)
 
 
 def cmd_archive(args):
@@ -313,7 +350,7 @@ def cmd_selftest(args):
             turns=turns,
         )
 
-    print("== 1/5 dsh 写入与读回（沙箱根）==")
+    print("== 1/6 dsh 写入与读回（沙箱根）==")
     dsh_root = os.path.join(box, "dsh-root")
     plan = dshwrite.plan_write(dsh_root, fake(), None)
     check(plan["action"] == "create", "plan 首次为 create")
@@ -324,7 +361,7 @@ def cmd_selftest(args):
     back = read_dsh(dsh_root)
     check(len(back) == 1 and len(back[0].turns) == 1 and back[0].title == "[codex] 自检会话", "读回 1 会话 1 轮带标题（自动来源前缀）")
 
-    print("== 2/5 dsh 增量追加 ==")
+    print("== 2/6 dsh 增量追加 ==")
     plan2 = dshwrite.plan_write(dsh_root, fake(v2=True), None)
     check(plan2["action"] == "append" and len(plan2["events"]) > 0, f"plan 二次为 append（+{len(plan2['events'])} 事件）")
     dshwrite.apply_write(plan2)
@@ -356,11 +393,11 @@ def cmd_selftest(args):
     tb3 = dshwrite.plan_title_backfill(dsh_root)
     check(sid_key in tb3["backfill"], "identity 失配且 title 一致时仍重建条目（回归）")
 
-    print("== 3/5 归档渲染 ==")
+    print("== 3/6 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")
 
-    print("== 4/5 确认与增量（HITL 纯函数）==")
+    print("== 4/6 确认与增量（HITL 纯函数）==")
     from agentsync import confirm as cf
     from agentsync import syncstate
 
@@ -403,7 +440,7 @@ def cmd_selftest(args):
     check(cf.history_full_sources({"kind": "days", "days": 7}, ["zcode"], {}) == [],
           "历史拦截：天数窗口（有界）不命中")
 
-    print("== 5/5 claude / opencode 读取器（沙箱样本）==")
+    print("== 5/6 claude / opencode 读取器（沙箱样本）==")
     import tempfile
 
     from agentsync.readers import read_claude, read_opencode
@@ -472,6 +509,54 @@ def cmd_selftest(args):
     check(oc[0].updated_at == 1787000009000 and oc[0].cwd == "D:/oc" and oc[0].model == "gpt-test",
           "opencode：updated_at / cwd / model")
 
+    print("== 6/6 反向写入器（codex / claude / hermes 沙箱回路）==")
+    from agentsync import claudewrite, codexwrite, hermeswrite
+    from agentsync.readers import read_claude, read_codex, read_hermes
+
+    cx_root = os.path.join(box, "codex-root")
+    check(codexwrite.plan_write(cx_root, fake(), None)["action"] == "create", "codex：计划 create")
+    codexwrite.apply_write(codexwrite.plan_write(cx_root, fake(), None))
+    back = read_codex(cx_root)
+    check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好"
+          and any(b.get("type") == "text" and b.get("text") == "第一答" for b in back[0].turns[0].steps[0].content),
+          "codex：读回提问与回答")
+    plan2 = codexwrite.plan_write(cx_root, fake(v2=True), None)
+    check(plan2["action"] == "append" and bool(plan2["lines"]), f"codex：二次 append（+{len(plan2['lines'])} 行）")
+    codexwrite.apply_write(plan2)
+    back2 = read_codex(cx_root)
+    check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "codex：追加后含工具调用")
+    check(codexwrite.plan_write(cx_root, fake(v2=True), None)["action"] == "up-to-date", "codex：三次 up-to-date")
+
+    cl_root = os.path.join(box, "claude-root")
+    check(claudewrite.plan_write(cl_root, fake(), None)["action"] == "create", "claude：计划 create")
+    claudewrite.apply_write(claudewrite.plan_write(cl_root, fake(), None))
+    back = read_claude(cl_root)
+    check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "claude：读回提问")
+    plan2 = claudewrite.plan_write(cl_root, fake(v2=True), None)
+    claudewrite.apply_write(plan2)
+    back2 = read_claude(cl_root)
+    check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls and back2[0].turns[1].steps[0].tool_results),
+          "claude：工具调用+回传往返")
+    check(claudewrite.plan_write(cl_root, fake(v2=True), None)["action"] == "up-to-date", "claude：三次 up-to-date")
+
+    hm_db = os.path.join(box, "hermes", "state.db")
+    os.makedirs(os.path.dirname(hm_db), exist_ok=True)
+    con = sqlite3.connect(hm_db)
+    con.executescript(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, cwd TEXT, started_at REAL, ended_at REAL, model TEXT, archived INTEGER DEFAULT 0);"
+        "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL, reasoning TEXT);"
+    )
+    con.commit()
+    con.close()
+    check(hermeswrite.plan_write(hm_db, fake(), None)["action"] == "create", "hermes：计划 create")
+    hermeswrite.apply_write(hermeswrite.plan_write(hm_db, fake(), None))
+    back = read_hermes(hm_db)
+    check(len(back) == 1 and back[0].turns[0].prompt == "第一问：你好", "hermes：读回提问")
+    hermeswrite.apply_write(hermeswrite.plan_write(hm_db, fake(v2=True), None))
+    back2 = read_hermes(hm_db)
+    check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "hermes：追加后含工具调用")
+    check(hermeswrite.plan_write(hm_db, fake(v2=True), None)["action"] == "up-to-date", "hermes：三次 up-to-date")
+
     if args.keep:
         print(f"\n沙箱保留在：{box}")
     else:
@@ -490,17 +575,24 @@ def main():
     s.add_argument("-v", "--verbose", action="store_true")
     s.set_defaults(fn=cmd_status)
 
-    s = sub.add_parser("to-dsh", help="导入到 dsh（可续聊）")
-    s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode；交互缺省时弹菜单")
-    s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量,默认)|7d|30d|任意N天|all(全部历史,需二次确认)；交互缺省时弹菜单")
-    s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
-    s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
-    s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
-    s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")
-    s.add_argument("--force", action="store_true", help="已存在的导入会话整体重写（修复损坏导入用）")
-    s.add_argument("--titles", default=None, help="标题覆盖 JSON 文件：{源会话ID: 新标题}（配合 --force 重写生效）")
-    _filter_args(s)
-    s.set_defaults(fn=cmd_to_dsh)
+    for sink, fn, root_help in (
+        ("to-dsh", cmd_to_dsh, "覆盖 dsh sessions 根目录"),
+        ("to-codex", cmd_to_codex, "覆盖 codex sessions 根目录"),
+        ("to-claude", cmd_to_claude, "覆盖 claude projects 根目录"),
+        ("to-hermes", cmd_to_hermes, "覆盖 hermes state.db 路径"),
+    ):
+        s = sub.add_parser(sink, help=f"导入到 {sink[3:]}（可续聊）")
+        s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode[,dsh]；交互缺省时弹菜单")
+        s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量,默认)|7d|30d|任意N天|all(全部历史,需二次确认)；交互缺省时弹菜单")
+        s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
+        s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
+        s.add_argument("--root", default=None, help=f"{root_help}（测试用）")
+        s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")
+        s.add_argument("--force", action="store_true", help="已存在的导入会话整体重写（修复损坏导入用）")
+        if sink == "to-dsh":
+            s.add_argument("--titles", default=None, help="标题覆盖 JSON 文件：{源会话ID: 新标题}（配合 --force 重写生效）")
+        _filter_args(s)
+        s.set_defaults(fn=fn)
 
     s = sub.add_parser("archive", help="导出 Markdown 归档")
     s.add_argument("--source", default="all", help="逗号分隔或 all")
