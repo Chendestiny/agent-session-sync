@@ -20,6 +20,7 @@
 |---|---|---|
 | resume 列表不认外来 rollout | 文件落位但 picker 只显示原生会话 | 0.137 的列表读 `~/.codex/state_N.sqlite` 的 **threads 索引**而非扫描文件；写入器落盘时同步登记 threads 行（模板取自真库显示行：`\\?\` 前缀 cwd、字符串秒时间戳） |
 | 极简 session_meta | 同上（即使登记了索引，续聊解析也可能缺上下文） | meta 对齐原生字段集：originator/cli_version/source/thread_source/base_instructions（从本机原生 rollout 动态抄） |
+| **`<` 开头提问被当注入过滤（已知未修）** | 以 `<el-button`、`<template` 等开头的真实代码提问整轮丢失（本机实测已丢 3 轮） | 触发条件：用户消息以 `<` 开头且非已知注入标签。修法：改为已知注入标签白名单（`<user_instructions>` `<environment_context>` `<permissions>` `<project_layout>` `<turn_aborted>`），其余 `<` 开头照收 |
 
 ## claude code
 
@@ -53,6 +54,7 @@
 |---|---|---|
 | cwd 缺失的会话 | WorkBuddy 拒开 | 写入前 `os.path.isdir` 校验，缺失兜底主目录（agentctxsync 同款） |
 | edge-sync-mapping-v2.db | 误碰可能破坏云同步映射 | 绝对不碰（读取器/写入器都不打开它） |
+| **force 重写仍追加（已知未修）** | `--force` 后 jsonl 内容翻倍（沙箱实测 1→2 条提问） | 触发条件：人工加 `--force`；create/append 路径无恙。修法：force 路径截断重写（同 opencode 先清后写） |
 
 ## zcode（只读，教训存档）
 
