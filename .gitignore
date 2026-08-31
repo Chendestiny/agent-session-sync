@@ -5,6 +5,7 @@
 # .test-*         测试沙箱与 db 副本（含真实会话数据）
 # .selftest/      自检沙箱
 archive/
+article/
 titles.json
 .titles-*.json
 .test-dsh-root/

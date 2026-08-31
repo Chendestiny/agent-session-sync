@@ -261,12 +261,13 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
         con.close()
 
 
-def _write_events(cur, s: dict, slug: str, project_id: str, feed: list, now_ms: int) -> None:
+def _write_events(cur, s: dict, slug: str, project_id: str, feed: list, now_ms: int,
+                  emit_created: bool = True) -> None:
     """opencode 1.18 桌面按事件溯源渲染（event/event_sequence 表）——不写事件，
     会话点开即报 `Expected a string starting with "msg", got "{messageID}"`。
 
-    每个导入会话补最小事件流：session.created → 每 message.updated →
-    每 message.part.updated → session.updated（载荷模板取自真库原生事件）。
+    事件流：session.created（仅 create——append 重复发会破坏一次性语义，实测坑）
+    → 每 message.updated → 每 message.part.updated → session.updated。
     注意：事件里的 directory 用反斜杠（与 session 表的正斜杠相反）。
     """
     sid = s["id"]
@@ -292,7 +293,8 @@ def _write_events(cur, s: dict, slug: str, project_id: str, feed: list, now_ms: 
              json.dumps(data, ensure_ascii=False)),
         )
 
-    emit("session.created.1", {"sessionID": sid, "info": dict(sess_info)})
+    if emit_created:
+        emit("session.created.1", {"sessionID": sid, "info": dict(sess_info)})
     for mid, data, ms, plist in feed:
         minfo = dict(data)  # 完整消息形状（agent/model/parentID 等已由 apply 补齐）
         minfo["id"] = mid
@@ -403,7 +405,7 @@ def apply_write(plan: dict) -> str:
                 )
                 plist.append((pid, pt, ms))
             feed.append((mid, data, ms, plist))
-        _write_events(cur, s, slug, project_id, feed, now_ms)
+        _write_events(cur, s, slug, project_id, feed, now_ms, emit_created=(plan["action"] == "create"))
         con.commit()
         return f"{plan['action']} {len(plan['messages'])} messages -> {plan['path']} ({sid[:12]})"
     finally:

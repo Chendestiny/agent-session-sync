@@ -756,6 +756,16 @@ def cmd_selftest(args):
     back2 = read_opencode(ocw_db)
     check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls and back2[0].turns[1].steps[0].tool_results),
           "opencode：工具调用+回传往返（input/output 同 part）")
+    # 回归：append 不得重复发 session.created（一次性语义）
+    con = sqlite3.connect(ocw_db)
+    for (sid_oc,) in con.execute("SELECT DISTINCT aggregate_id FROM event"):
+        c = con.execute("SELECT COUNT(*) FROM event WHERE aggregate_id=? AND type='session.created.1'", (sid_oc,)).fetchone()[0]
+        if c != 1:
+            check(False, f"opencode：append 后 created 事件应恒为1（实测 {c}）")
+            break
+    else:
+        check(True, "opencode：append 后 created 事件恒为1（回归）")
+    con.close()
     check(opencodewrite.plan_write(ocw_db, fake(v2=True), None)["action"] == "up-to-date", "opencode：三次 up-to-date")
     pf = opencodewrite.plan_write(ocw_db, fake(v2=True), None, force=True)
     opencodewrite.apply_write(pf)
