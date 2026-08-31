@@ -83,7 +83,7 @@ def read_zcode(db_path, include_subagents: bool = False) -> list[Session]:
         for sid, directory, title, created, updated in session_rows:
             msgs = list(
                 cur.execute(
-                    "SELECT id, data FROM message WHERE session_id=? ORDER BY sequence", (sid,)
+                    "SELECT id, time_created, data FROM message WHERE session_id=? ORDER BY sequence", (sid,)
                 )
             )
             if not msgs:
@@ -104,7 +104,7 @@ def read_zcode(db_path, include_subagents: bool = False) -> list[Session]:
             turns: list[Turn] = []
             compaction_summaries: list[str] = []
             cur_turn: Turn | None = None
-            for msg_id, mdata in msgs:
+            for msg_id, mtime, mdata in msgs:
                 try:
                     d = json.loads(mdata)
                 except json.JSONDecodeError:
@@ -133,7 +133,7 @@ def read_zcode(db_path, include_subagents: bool = False) -> list[Session]:
                     ]
                     prompt = "\n".join(texts)
                     if prompt and "<system-reminder>" not in prompt:
-                        cur_turn = Turn(prompt=prompt)
+                        cur_turn = Turn(prompt=prompt, time=_ms(mtime))
                         turns.append(cur_turn)
                 elif role == "assistant" and cur_turn is not None:
                     # timeline_event（模型切换分隔）等非 assistant_response 消息跳过；
@@ -235,7 +235,7 @@ def read_hermes(db_path, include_archived: bool = True) -> list[Session]:
                 if role == "user":
                     text = _hermes_user_text(content)
                     if text:
-                        cur_turn = Turn(prompt=text)
+                        cur_turn = Turn(prompt=text, time=_ms(ts) if ts else 0)
                         turns.append(cur_turn)
                 elif role == "assistant" and cur_turn is not None:
                     step = Step()
@@ -344,7 +344,7 @@ def read_dsh(sessions_root) -> list[Session]:
             t = o.get("type")
             data = o.get("data") if isinstance(o.get("data"), dict) else {}
             if t == "turn/start":
-                cur_turn = Turn(prompt="")
+                cur_turn = Turn(prompt="", time=o.get("time") or 0)
                 turns.append(cur_turn)
                 cur_step = None
             elif t == "user/message":
@@ -363,7 +363,7 @@ def read_dsh(sessions_root) -> list[Session]:
             elif t == "assistant/message":
                 msg = data.get("message") if isinstance(data.get("message"), dict) else {}
                 if cur_turn is None:
-                    cur_turn = Turn(prompt="")
+                    cur_turn = Turn(prompt="", time=o.get("time") or 0)
                     turns.append(cur_turn)
                 cur_step = Step()
                 src = msg.get("source") or {}
@@ -581,7 +581,7 @@ def read_workbuddy(home, include_deleted: bool = False) -> list[Session]:
                     if not text:
                         continue
                     flush_pending()
-                    cur_turn = Turn(prompt=text)
+                    cur_turn = Turn(prompt=text, time=int(e.get("timestamp") or 0))
                     turns.append(cur_turn)
                 elif role == "assistant" and cur_turn is not None:
                     step = pending or Step()
@@ -685,7 +685,7 @@ def read_codex(sessions_dir) -> list[Session]:
                                 parts.append(b["text"])
                     prompt = "\n".join(parts).strip()
                     if prompt:
-                        cur_turn = Turn(prompt=prompt)
+                        cur_turn = Turn(prompt=prompt, time=_ms(rec.get("timestamp")))
                         turns.append(cur_turn)
                         last_step = None
                 elif pt == "message" and payload.get("role") == "assistant" and cur_turn is not None:
@@ -900,7 +900,7 @@ def read_claude(projects_dir) -> list[Session]:
                 text = _claude_user_text(content)
                 if not text:
                     continue  # 纯工具回传 / 注入行：不成轮
-                cur_turn = Turn(prompt=text)
+                cur_turn = Turn(prompt=text, time=_ms(rec.get("timestamp")))
                 turns.append(cur_turn)
                 last_step = None
                 call_steps = {}
@@ -1039,7 +1039,7 @@ def read_opencode(db_path) -> list[Session]:
                     text = _claude_strip_injection("\n".join(texts)).strip()
                     if not text:
                         continue
-                    cur_turn = Turn(prompt=text)
+                    cur_turn = Turn(prompt=text, time=mrow["time_created"] or 0)
                     turns.append(cur_turn)
                     continue
                 if cur_turn is None:

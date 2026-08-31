@@ -511,6 +511,18 @@ def cmd_selftest(args):
     tb3 = dshwrite.plan_title_backfill(dsh_root)
     check(sid_key in tb3["backfill"], "identity 失配且 title 一致时仍重建条目（回归）")
 
+    # 轮级真实时间（回归：事件时间曾被压平到会话创建时间）
+    sess_t = fake(v2=True)
+    sess_t.created_at = 1787000000000
+    sess_t.turns[0].time = 1787003600000
+    sess_t.turns[1].time = 1787007200000
+    root_t = os.path.join(box, "dsh-time")
+    plan_t = dshwrite.plan_write(root_t, sess_t, None)
+    dshwrite.apply_write(plan_t)
+    _, evs_t = dshwrite.read_log_events(plan_t["path"])
+    ts_turns = [e["time"] for e in evs_t if e["type"] == "turn/start"]
+    check(ts_turns == [1787003600000, 1787007200000], "轮级时间落盘（turn/start 用 Turn.time，不压平）")
+
     print("== 3/8 归档渲染 ==")
     out = archive_mod.write_archive([fake(v2=True)], os.path.join(box, "archive"))
     check(len(out) == 1 and os.path.getsize(out[0]) > 0, f"Markdown 已生成（{os.path.basename(out[0]) if out else '-'}）")

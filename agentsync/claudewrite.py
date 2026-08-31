@@ -73,7 +73,7 @@ def _base(sid: str, cwd: str) -> dict:
 def _turn_records(sid: str, cwd: str, turn, idx: int, base_ms: int, parent: str | None) -> tuple[list[str], str | None]:
     """一个 IR 轮 → jsonl 行列表；返回 (行列表, 最后一个 uuid)。"""
     lines: list[str] = []
-    ts = base_ms + idx * 1000
+    ts = turn.time or (base_ms + idx * 1000)  # 轮级真实时间优先；未知回退确定性合成
 
     def emit(rec: dict, t: int) -> str:
         u = str(uuid.uuid5(_NS, f"{sid}:{idx}:{len(lines)}"))

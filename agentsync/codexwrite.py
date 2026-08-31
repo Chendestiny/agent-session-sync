@@ -75,7 +75,7 @@ def _count_turns(path: str) -> int:
 def _turn_lines(sess: Session, turn, idx: int, base_ms: int) -> list[str]:
     """一个 IR 轮 → rollout 行（turn_context + user 消息 + 各响应项）。"""
     lines: list[str] = []
-    ts = base_ms + idx * 1000  # 轮级时间戳：确定性毫秒步进
+    ts = turn.time or (base_ms + idx * 1000)  # 轮级真实时间优先；未知回退确定性合成
     tc: dict = {}
     if sess.cwd:
         tc["cwd"] = sess.cwd

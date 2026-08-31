@@ -46,7 +46,7 @@ def _session_exists(con, sid: str) -> bool:
 
 def _turn_rows(sess: Session, turn, idx: int, base_s: float) -> list[dict]:
     """一个 IR 轮 → messages 行（user 提问 + assistant 内容/工具 + tool 结果）。"""
-    ts = base_s + idx * 1.0
+    ts = (turn.time / 1000) if turn.time else (base_s + idx * 1.0)  # 轮级真实时间优先
     rows: list[dict] = [{"role": "user", "content": turn.prompt, "timestamp": ts}]
     k = 0
     for step in turn.steps:

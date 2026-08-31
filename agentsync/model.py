@@ -84,6 +84,7 @@ class Step:
 class Turn:
     prompt: str
     steps: list[Step] = field(default_factory=list)
+    time: int = 0  # 轮开始时间（毫秒；0=未知 → 写入器回退会话创建时间，防压平）
 
 
 @dataclass

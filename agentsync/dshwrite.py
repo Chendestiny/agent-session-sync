@@ -92,9 +92,9 @@ def synthesize(
     events: list[dict] = []
     seq = 0
 
-    def push(etype: str, data: dict, surface: bool = False, source_seqs=None) -> dict:
+    def push(etype: str, data: dict, surface: bool = False, source_seqs=None, ts: int | None = None) -> dict:
         nonlocal seq
-        ev = {"type": etype, "seq": seq, "time": meta["createdAt"], "data": data}
+        ev = {"type": etype, "seq": seq, "time": ts if ts is not None else meta["createdAt"], "data": data}
         if surface:
             ev["surfaceOp"] = "append"
         if source_seqs is not None:
@@ -148,7 +148,9 @@ def synthesize(
                 covered.add(tr.tool_call_id)
 
     for i, t in enumerate(turns, start=1):
-        push("turn/start", {"turn": i})
+        # 轮级真实时间：事件不再压平到会话创建时间（Turn.time=0 时回退旧行为）
+        turn_ts = t.time or None
+        push("turn/start", {"turn": i}, ts=turn_ts)
         if not t.steps:
             push(
                 "user/message",
@@ -159,9 +161,10 @@ def synthesize(
                     "source": {"kind": "user"},
                 },
                 surface=True,
+                ts=turn_ts,
             )
         for j, step in enumerate(t.steps, start=1):
-            push("step/start", {"turn": i, "step": j})
+            push("step/start", {"turn": i, "step": j}, ts=turn_ts)
             if j == 1:
                 push(
                     "user/message",
@@ -172,6 +175,7 @@ def synthesize(
                         "source": {"kind": "user"},
                     },
                     surface=True,
+                    ts=turn_ts,
                 )
             push(
                 "assistant/message",
@@ -186,11 +190,13 @@ def synthesize(
                     },
                 },
                 surface=True,
+                ts=turn_ts,
             )
             for tc in step.tool_calls:
                 ev = push(
                     "tool/call",
                     {"turn": i, "step": j, "callId": tc["id"], "name": tc["name"], "arguments": tc["arguments"]},
+                    ts=turn_ts,
                 )
                 call_seq_by_id[tc["id"]] = ev["seq"]
             for tr in step.tool_results:
@@ -215,6 +221,7 @@ def synthesize(
                     },
                     surface=True,
                     source_seqs=[call_seq_by_id[tr.tool_call_id]] if tr.tool_call_id in call_seq_by_id else None,
+                    ts=turn_ts,
                 )
             # 兜底配对：无结果的调用补空 result（resume 时 API 拒绝缺 tool 消息）
             for tc in step.tool_calls:
@@ -234,9 +241,10 @@ def synthesize(
                     },
                     surface=True,
                     source_seqs=[call_seq_by_id[tc["id"]]] if tc["id"] in call_seq_by_id else None,
+                    ts=turn_ts,
                 )
-            push("step/end", {"turn": i, "step": j})
-        push("turn/end", {"turn": i, "reason": {"kind": "completed"}})
+            push("step/end", {"turn": i, "step": j}, ts=turn_ts)
+        push("turn/end", {"turn": i, "reason": {"kind": "completed"}}, ts=turn_ts)
 
     title = (title_override or sess.title or "").strip()
     # 兜底：无显式标题 → 首轮提问首行（对齐 dsh 原生 fallback 与 codex 转换器约定），

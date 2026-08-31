@@ -139,7 +139,7 @@ def _tool_input_obj(args_text: str):
 
 def _turn_messages(sess: Session, turn, idx: int, base_ms: int) -> list[tuple[dict, list[dict]]]:
     """一个 IR 轮 → [(message.data, [part.data...]), ...]。"""
-    ms = base_ms + idx * 1000
+    ms = turn.time or (base_ms + idx * 1000)  # 轮级真实时间优先；未知回退确定性合成
     out: list[tuple[dict, list[dict]]] = []
     out.append(({"role": "user", "time": {"created": ms}},
                 [{"type": "text", "text": turn.prompt}]))

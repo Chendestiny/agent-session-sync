@@ -58,7 +58,7 @@ def _count_turns(path: str) -> int:
 
 def _turn_events(sid: str, cwd: str, turn, idx: int, base_ms: int) -> list[dict]:
     """一个 IR 轮 → WorkBuddy jsonl 事件列表。"""
-    ms = base_ms + idx * 1000
+    ms = turn.time or (base_ms + idx * 1000)  # 轮级真实时间优先；未知回退确定性合成
     ev: list[dict] = []
 
     def E(fields: dict, k: int) -> dict:
