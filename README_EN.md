@@ -4,20 +4,11 @@
 
 Cross-agent sessions across **codex / hermes / dsh (DeepSeek Harness) / zcode / workbuddy / claude code / opencode** —
 any historical session can be imported into any of the others and **continued**, plus a unified
-**Markdown archive**. One-way consolidation (A→C→B: 7 readers + 6 writers, not 7×6 direct pairs);
-**zcode is read-only** (live-db writes showed rendering issues; that writer is archived).
+**Markdown archive**. One-way consolidation (A→C→B: 7 readers + 6 writers, not 7×6 direct pairs).
 
 | A · Sources (7) | C · Normalization | B · Targets (6 + archive) |
 |---|---|---|
 | codex CLI · hermes · dsh · zcode *(read-only)* · workbuddy · claude code · opencode | IR (turns) + canonical store `~/.session-sync` (resumable pull/push) | dsh *(resumable, idempotent + incremental)* · codex · claude code · hermes · opencode · workbuddy + Markdown archive |
-
-> Only dsh is written to. Writing hermes risks cross-process lock contention; codex has been
-> superseded by dsh. The WorkBuddy write recipe is documented in `docs/agents/workbuddy.md` §5
-> should you ever need it.
-
-Design references [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import) (MIT, a dsh
-plugin — see `reference/`). Write-side formats were reverse-engineered field-by-field against the locally
-installed dsh 0.1.1-rc / zcode 0.16.x.
 
 ## 🚀 Quick Start
 
@@ -158,3 +149,9 @@ See the Chinese README's 目录结构 section, or explore the tree directly:
 - Writes to dsh only create new `import-*` session directories; native sessions are never touched.
 - Never writes zcode/hermes/codex/workbuddy stores.
 - Restore: use the auto backups (`*.agentsync-bak-*`) created before every mutation.
+
+---
+
+Design references [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import) (MIT, a dsh
+plugin — see `reference/`). Write-side formats were reverse-engineered field-by-field against the locally
+installed dsh 0.1.1-rc / zcode 0.16.x.

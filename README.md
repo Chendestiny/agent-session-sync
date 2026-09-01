@@ -4,15 +4,11 @@
 
 七家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode**。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：7 读 + 6 写，而非 7×6 条直连）；**zcode 只出不进**（实测活库写入
-存在时间/渲染兼容问题，写入器已存档）。
+单向归一（A→C→B：7 读 + 6 写，而非 7×6 条直连）。
 
 | A · 读取源（7 家） | C · 归一化 | B · 写入目标（6 家 + 归档） |
 |---|---|---|
 | codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy ＋ Markdown 归档（浏览/搜索） |
-
-设计参考 [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import)（MIT，dsh 插件，
-见 `reference/`），写入规格按本机安装的 dsh 0.1.1-rc / zcode 0.16.x 逐字段逆向核实。
 
 ## 📋 前置条件
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，
@@ -200,3 +196,8 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 - 🚫 **不写 zcode/hermes/codex/workbuddy 的存储**（zcode 写入方向已于 2026-08-26 移除）。
 - ♻️ 恢复方法：zcode db 异常时，用 `db.sqlite.cleanup-bak-*` / `db.sqlite.agentsync-bak-*`
   覆盖回原文件（需退出 zcode）。
+
+---
+
+设计参考 [Nwflower/dsh-chat-import](https://github.com/Nwflower/dsh-chat-import)（MIT，dsh 插件，
+见 `reference/`），写入规格按本机安装的 dsh 0.1.1-rc / zcode 0.16.x 逐字段逆向核实。
