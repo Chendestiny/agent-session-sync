@@ -158,3 +158,71 @@ def prompt_sources() -> list[str]:
     except (EOFError, KeyboardInterrupt):
         raise SystemExit("已取消：未做任何修改。")
     return parse_sources_answer(ans)
+
+
+# ── 大批量勾选（确认 3/3）────────────────────────────────────────────────
+
+BATCH_THRESHOLD = 15  # 候选超过此数：交互弹会话勾选；非交互需 --confirm-batch
+
+NONINTERACTIVE_BATCH_HELP = (
+    "⚠ 本次候选 {n} 条，超过批量阈值 {t}——非交互环境不会一股脑写入，三选一：\n"
+    "  · 缩小范围：--session <id子串> / --limit <每源N条> / --scope 7d 等有界窗口\n"
+    "  · 显式放行全量（人已拍板）：追加 --confirm-batch\n"
+    "  · 在交互终端跑同一条命令：会弹会话清单逐条勾选"
+)
+
+
+def parse_pick_answer(ans: str, n: int) -> list[int] | None:
+    """'all'/空 → None（全选）；'1,3-5,8' → 0 基索引列表；'q' 取消。"""
+    s = (ans or "").strip().lower()
+    if s in _QUIT:
+        raise SystemExit("已取消：未做任何修改。")
+    if not s or s in ("all", "a", "全部"):
+        return None
+    out: list[int] = []
+    for tok in re.split(r"[,，\s]+", s):
+        if not tok:
+            continue
+        m = re.match(r"^(\d+)(?:-(\d+))?$", tok)
+        if not m:
+            raise SystemExit(f"无法识别的选择：{tok}（可用：编号 / 范围 3-5 / all / q）")
+        a = int(m.group(1))
+        b = int(m.group(2)) if m.group(2) else a
+        if a < 1 or b < a or b > n:
+            raise SystemExit(f"选择越界：{tok}（共 {n} 条，范围 1-{n}）")
+        out.extend(range(a - 1, b))
+    return sorted(set(out))
+
+
+def prompt_session_pick(labels: list[str]) -> list[int] | None:
+    """确认 3/3 · 大批量会话勾选。返回选中的 0 基索引；None=全部。"""
+    print(f"── 确认 3/3 · 本次实际同步哪些（共 {len(labels)} 条）" + "─" * 8)
+    MAX_SHOW = 50
+    for i, lab in enumerate(labels[:MAX_SHOW], start=1):
+        print(f"  {i:>3}) {lab}")
+    if len(labels) > MAX_SHOW:
+        print(f"  …（其余 {len(labels) - MAX_SHOW} 条未显示；回车=all，或用编号/范围选择）")
+    print("  回车=全部同步 | 编号如 1,3-5,8 | q 取消")
+    try:
+        ans = input("选择 [all]: ")
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("已取消：未做任何修改。")
+    return parse_pick_answer(ans, len(labels))
+
+
+def batch_gate(candidates: list, gated: bool, confirm_batch: bool, label_of) -> list | None:
+    """大批量闸门：候选超阈值时——交互弹逐条勾选（返回保留子集）；非交互要求
+    --confirm-batch（token 即确认）否则拒绝。未超阈值 / 未启用（dry-run）→ None=全保留。
+    """
+    if len(candidates) <= BATCH_THRESHOLD or not gated:
+        return None
+    if confirm_batch:
+        print(f"⚠ 大批量：{len(candidates)} 条已由 --confirm-batch 显式确认")
+        return None
+    if interactive():
+        picked = prompt_session_pick([label_of(c) for c in candidates])
+        if picked is None:
+            return None
+        print(f"已选 {len(picked)} / {len(candidates)} 条")
+        return [candidates[i] for i in picked]
+    raise SystemExit(NONINTERACTIVE_BATCH_HELP.format(n=len(candidates), t=BATCH_THRESHOLD))

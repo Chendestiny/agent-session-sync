@@ -62,7 +62,8 @@ python sync.py attach-dsh --apply                                           # �
 **同步语义**：幂等（重复跑自动去重）；增量（源会话长了再跑 `to-dsh` 只追加新轮次；
 `--scope inc` 基准存于 `~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠）；
 **人在回路**（to-dsh / sync-finish 先确认 ①来源区 ②数据量：交互弹菜单、非交互参数即确认缺参拒绝；
-**历史全量二次拦截**：`--scope all` 或 inc 首跑在 `--apply` 时需交互 y/N 或人给的 `--confirm-history`，agent 不得自行拍板全量）；
+**历史全量二次拦截**：`--scope all` 或 inc 首跑在 `--apply` 时需交互 y/N 或人给的 `--confirm-history`，agent 不得自行拍板全量；
+**大批量第三道**：候选 >15 交互弹会话勾选清单，非交互需 `--confirm-batch` 或缩小范围——绝不一股脑写入）；
 导入会话按源工作区自动落分区。落盘后可见性：dsh 需 attach + 重启。
 预期留在 dsh「未分组」的：源会话无 cwd（hermes 旧库）、cwd 目录已删除、临时目录、
 cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）。

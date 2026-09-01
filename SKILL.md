@@ -30,6 +30,8 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
    参数即确认，缺任一命令会拒绝执行**——绝不替用户默认范围。
    **历史全量（`--scope all` 或 inc 首跑）额外拦截**：交互弹 y/N（默认取消）；
    非交互必须由用户显式给 `--confirm-history`——agent 绝不自行拍板全量历史。
+   **大批量（候选 >15）第三道勾选**：交互弹会话清单（回车=全部 / 编号多选如 1,3-5,8 / q 取消）；
+   非交互必须 `--confirm-batch` 或先缩小范围（--session / --limit / 有界 --scope）——绝不一股脑写入。
 4. **默认 dry-run**：所有写命令先不带 `--apply` 跑一遍，把计划给用户看过再落盘。
 5. 出错就停下报告，不要猜测性重试。
 6. **attach-dsh / prune 的硬前提：dsh 必须完全退出**（含托盘/后台 node 进程）。
@@ -76,6 +78,8 @@ tools/verify-dsh-backend.cmd                           # dsh 原生后端强校�
 `--scope inc|7d|30d|<N>d|all`（确认2 数据量；inc=仅增量，基准存于
 `~/.dsh/sessions/.agentsync-state.json`，`--apply` 成功后推进，回看 15 分钟重叠；
 all 或 inc 首跑=历史全量，`--apply` 需交互 y/N 或非交互 `--confirm-history`）。
+大批量：候选 >15 时交互弹会话勾选清单（确认 3/3，回车=全部 / 编号多选）；
+非交互需 `--confirm-batch` 或缩小范围（--session / --limit / 有界 --scope）。
 过滤参数（to-dsh / archive 通用）：`--session <源ID子串,逗号分隔>`、`--cwd <路径子串>`、
 `--since <天数>`、`--limit <每源数量>`。预算参数：`to-dsh --budget 200000` 超限时三层裁剪，
 默认不裁。

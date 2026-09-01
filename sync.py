@@ -234,31 +234,45 @@ def _run_sink(args, name: str, get_store, writer, loader=None, state_dir=None, s
     cutoffs, first = _compute_cutoffs(scope, which, state)
     if first:
         print(f"仅增量：{'/'.join(first)} 首次运行无基准，按全部历史处理")
-    total = planned = applied = 0
+    # 候选先收集后执行（大批量时可逐条勾选）；dry-run 只读预览免闸
+    candidates: list[tuple[str, object]] = []
     for src in which:
         sessions = _filter(loaded.get(src, []), args)
         c = cutoffs.get(src)
         if c is not None:
             sessions = syncstate.apply_cutoff(sessions, c)
-        for sess in sessions:
-            total += 1
-            plan = writer.plan_write(root, sess, budget=args.budget, force=args.force, titles=titles)
-            tag = plan["action"]
-            n_units = len(plan.get("events") or plan.get("lines") or plan.get("rows") or [])
-            extra = ""
-            if tag == "append":
-                extra = f"（源 {plan['sourceTurns']} 轮 > 已有 {plan['existingTurns']} 轮，追加 {n_units} 单元）"
-            elif tag == "create":
-                extra = f"（{plan['stats']['messages']} 消息 / {plan['stats']['toolCalls']} 工具调用）"
-            elif tag == "skip-deleted":
-                extra = f"（{plan['reason']}）"
-            print(f"  [{tag:13}] {src}:{sess.source_id} 「{(sess.title or sess.turns[0].prompt[:24] if sess.turns else '')[:32]}」 {extra}")
-            if tag in ("create", "append"):
-                planned += 1
-                if args.apply:
-                    msg = writer.apply_write(plan)
-                    print(f"      └─ applied: {msg}")
-                    applied += 1
+        candidates.extend((src, s) for s in sessions)
+
+    def _label(item):
+        src, sess = item
+        d = datetime.fromtimestamp((sess.updated_at or sess.created_at or 0) / 1000).strftime("%m-%d")
+        t = (sess.title or sess.turns[0].prompt[:24] if sess.turns else "")[:30]
+        return f"[{src:9}] {d} {t}"
+
+    keep = confirm.batch_gate(candidates, gated=bool(args.apply),
+                              confirm_batch=bool(getattr(args, "confirm_batch", False)), label_of=_label)
+    if keep is not None:
+        candidates = keep
+    total = planned = applied = 0
+    for src, sess in candidates:
+        total += 1
+        plan = writer.plan_write(root, sess, budget=args.budget, force=args.force, titles=titles)
+        tag = plan["action"]
+        n_units = len(plan.get("events") or plan.get("lines") or plan.get("rows") or [])
+        extra = ""
+        if tag == "append":
+            extra = f"（源 {plan['sourceTurns']} 轮 > 已有 {plan['existingTurns']} 轮，追加 {n_units} 单元）"
+        elif tag == "create":
+            extra = f"（{plan['stats']['messages']} 消息 / {plan['stats']['toolCalls']} 工具调用）"
+        elif tag == "skip-deleted":
+            extra = f"（{plan['reason']}）"
+        print(f"  [{tag:13}] {src}:{sess.source_id} 「{(sess.title or sess.turns[0].prompt[:24] if sess.turns else '')[:32]}」 {extra}")
+        if tag in ("create", "append"):
+            planned += 1
+            if args.apply:
+                msg = writer.apply_write(plan)
+                print(f"      └─ applied: {msg}")
+                applied += 1
     mode = "APPLY" if args.apply else "DRY-RUN（--apply 落盘）"
     print(f"\n{mode}：共 {total} 个候选，{planned} 个待写入，{applied} 个已写入（target={name} root={root}）")
     if args.apply:
@@ -285,27 +299,41 @@ def cmd_pull(args):
     if first:
         print(f"仅增量：{'/'.join(first)} 首次运行无基准，按全部历史处理")
     tomb = dshwrite.load_tombstones(c_dir)
-    total = created = updated = ok = skipped = 0
+    # 候选先收集后执行；pull 本身写 C（安全），但大批量仍给逐条勾选的控制权
+    candidates: list[tuple[str, object]] = []
     for src in which:
         sessions = _filter(loaded.get(src, []), args)
         c = cutoffs.get(src)
         if c is not None:
             sessions = syncstate.apply_cutoff(sessions, c)
-        for sess in sessions:
-            total += 1
-            label = (sess.title or sess.turns[0].prompt[:24] if sess.turns else "")[:32]
-            if sess.source_id in tomb:
-                skipped += 1
-                continue
-            r = store.write_session(sess)
-            if r == "create":
-                created += 1
-            elif r == "update":
-                updated += 1
-            else:
-                ok += 1
-            if r != "up-to-date":
-                print(f"  [{r:13}] {src}:{sess.source_id} 「{label}」")
+        candidates.extend((src, s) for s in sessions)
+
+    def _label(item):
+        src, sess = item
+        d = datetime.fromtimestamp((sess.updated_at or sess.created_at or 0) / 1000).strftime("%m-%d")
+        t = (sess.title or sess.turns[0].prompt[:24] if sess.turns else "")[:30]
+        return f"[{src:9}] {d} {t}"
+
+    keep = confirm.batch_gate(candidates, gated=True,
+                              confirm_batch=bool(getattr(args, "confirm_batch", False)), label_of=_label)
+    if keep is not None:
+        candidates = keep
+    total = created = updated = ok = skipped = 0
+    for src, sess in candidates:
+        total += 1
+        label = (sess.title or sess.turns[0].prompt[:24] if sess.turns else "")[:32]
+        if sess.source_id in tomb:
+            skipped += 1
+            continue
+        r = store.write_session(sess)
+        if r == "create":
+            created += 1
+        elif r == "update":
+            updated += 1
+        else:
+            ok += 1
+        if r != "up-to-date":
+            print(f"  [{r:13}] {src}:{sess.source_id} 「{label}」")
     print(f"\nPULL：共 {total} 个候选，新增 {created}，更新 {updated}，无变化 {ok}，墓碑拦 {skipped}（C={c_dir}）")
     syncstate.mark(c_dir, [s for s in which if s in loaded])
     print("pull 基准已推进（下次『仅增量』从这里起算）")
@@ -569,6 +597,25 @@ def cmd_selftest(args):
           "历史拦截：inc 有基准不命中")
     check(cf.history_full_sources({"kind": "days", "days": 7}, ["zcode"], {}) == [],
           "历史拦截：天数窗口（有界）不命中")
+    check(cf.parse_pick_answer("all", 5) is None and cf.parse_pick_answer("", 5) is None, "pick：all/空=全选")
+    check(cf.parse_pick_answer("1,3-5", 8) == [0, 2, 3, 4], "pick：编号+范围")
+    check(cf.parse_pick_answer("2", 3) == [1], "pick：单选")
+    try:
+        cf.parse_pick_answer("9", 3)
+        check(False, "pick：越界应退出")
+    except SystemExit:
+        check(True, "pick：越界退出")
+    check(cf.batch_gate(list(range(20)), gated=False, confirm_batch=False, label_of=str) is None,
+          "gate：未启用（dry-run）放行")
+    check(cf.batch_gate(list(range(5)), gated=True, confirm_batch=False, label_of=str) is None,
+          "gate：阈内放行")
+    check(cf.batch_gate(list(range(20)), gated=True, confirm_batch=True, label_of=str) is None,
+          "gate：--confirm-batch 放行")
+    try:
+        cf.batch_gate(list(range(20)), gated=True, confirm_batch=False, label_of=str)
+        check(False, "gate：非交互超阈应拒绝")
+    except SystemExit:
+        check(True, "gate：非交互超阈拒绝（一股脑防线）")
 
     print("== 5/8 claude / opencode 读取器（沙箱样本）==")
     import tempfile
@@ -856,6 +903,7 @@ def main():
         s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode[,dsh]；交互缺省时弹菜单")
         s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量,默认)|7d|30d|任意N天|all(全部历史,需二次确认)；交互缺省时弹菜单")
         s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
+        s.add_argument("--confirm-batch", action="store_true", help="大批量（>15 条）的人工放行 token：非交互必给，交互则弹勾选清单")
         s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
         s.add_argument("--root", default=None, help=f"{root_help}（测试用）")
         s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")
@@ -868,6 +916,7 @@ def main():
     s = sub.add_parser("pull", help="各源 → 规范库 ~/.session-sync（只读源、只写 C，无需退出任何应用）")
     s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合（pull 的 all 含 dsh 原生会话）")
     s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（C 为内部库，全量不拦截）")
+    s.add_argument("--confirm-batch", action="store_true", help="大批量（>15 条）的人工放行 token：非交互必给，交互则弹勾选清单")
     _filter_args(s)
     s.set_defaults(fn=cmd_pull)
 
@@ -876,6 +925,7 @@ def main():
     s.add_argument("--source", default="", help="来源区（确认1/2）：C 里哪些源推过去")
     s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（写 agent 存储，全量需确认）")
     s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
+    s.add_argument("--confirm-batch", action="store_true", help="大批量（>15 条）的人工放行 token：非交互必给，交互则弹勾选清单")
     s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
     s.add_argument("--root", default=None, help="覆盖目标存储路径（测试用）")
     s.add_argument("--budget", type=int, default=None, help="上下文 token 预算（超限裁剪，默认不裁）")
