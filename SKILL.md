@@ -108,5 +108,5 @@ all 或 inc 首跑=历史全量，`--apply` 需交互 y/N 或非交互 `--confir
 - 环境依赖：Python 3.10+ 与 `zstandard`；Node 22（`nvm use 22`）仅 dsh 原生后端校验需要。
 - dsh 源默认排除 origin=subagent 子代理会话（每次委派各落一个目录，侧栏隐藏；对齐 zcode/codex
   过滤口径）；dashboard 展示口径含它们并带 🤖 徽章。
-- zcode 写入是受控例外：仅限裁剪预算内（trim_turns ~100k tokens）新建/追加，必须退出 zcode +
-  全库备份；全量大会话写入会超上下文黑屏报废（实测 124 轮=163 万 tokens）。
+- zcode 永不写入（两连败定论：全量=超上下文黑屏；裁剪版也黑屏且无上下文——v2 注册表
+  协同所致）。要带上下文进 zcode：生成交接摘要 markdown 让用户新会话贴入。
