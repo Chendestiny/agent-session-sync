@@ -1093,3 +1093,23 @@ def read_opencode(db_path) -> list[Session]:
         return sessions
     finally:
         con.close()
+
+
+def load_sources(which, p):
+    """统一 fan-out：{source: [Session]}（存储缺失的源跳过）。"""
+    loaded: dict[str, list[Session]] = {}
+    if "zcode" in which and p.zcode_db:
+        loaded["zcode"] = read_zcode(p.zcode_db)
+    if "hermes" in which and p.hermes_db:
+        loaded["hermes"] = read_hermes(p.hermes_db)
+    if "dsh" in which and p.dsh_sessions:
+        loaded["dsh"] = read_dsh(p.dsh_sessions)
+    if "codex" in which and p.codex_sessions:
+        loaded["codex"] = read_codex(p.codex_sessions)
+    if "workbuddy" in which and p.workbuddy_home:
+        loaded["workbuddy"] = read_workbuddy(p.workbuddy_home)
+    if "claude" in which and p.claude_projects:
+        loaded["claude"] = read_claude(p.claude_projects)
+    if "opencode" in which and p.opencode_db:
+        loaded["opencode"] = read_opencode(p.opencode_db)
+    return loaded

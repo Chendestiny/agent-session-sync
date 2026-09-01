@@ -55,6 +55,7 @@ def session_to_dict(s: Session) -> dict:
         "turns": [
             {
                 "prompt": t.prompt,
+                "time": t.time,
                 "steps": [
                     {
                         "content": st.content,
@@ -89,7 +90,7 @@ def session_from_dict(d: dict) -> Session:
                     model=st.get("model"),
                 )
             )
-        turns.append(Turn(prompt=t.get("prompt") or "", steps=steps))
+        turns.append(Turn(prompt=t.get("prompt") or "", steps=steps, time=int(t.get("time") or 0)))
     return Session(
         source=d.get("source") or "",
         source_id=d.get("source_id") or "",

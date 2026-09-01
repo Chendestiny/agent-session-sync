@@ -42,29 +42,7 @@ def _fmt_ts(ms: int) -> str:
 
 
 def load_sources(which: list[str], p: paths.StorePaths):
-    loaded: dict[str, list] = {}
-    if "zcode" in which:
-        if p.zcode_db:
-            loaded["zcode"] = readers.read_zcode(p.zcode_db)
-    if "hermes" in which:
-        if p.hermes_db:
-            loaded["hermes"] = readers.read_hermes(p.hermes_db)
-    if "dsh" in which:
-        if p.dsh_sessions:
-            loaded["dsh"] = readers.read_dsh(p.dsh_sessions)
-    if "codex" in which:
-        if p.codex_sessions:
-            loaded["codex"] = readers.read_codex(p.codex_sessions)
-    if "workbuddy" in which:
-        if p.workbuddy_home:
-            loaded["workbuddy"] = readers.read_workbuddy(p.workbuddy_home)
-    if "claude" in which:
-        if p.claude_projects:
-            loaded["claude"] = readers.read_claude(p.claude_projects)
-    if "opencode" in which:
-        if p.opencode_db:
-            loaded["opencode"] = readers.read_opencode(p.opencode_db)
-    return loaded
+    return readers.load_sources(which, p)
 
 
 def _filter(sessions: list, args) -> list:
