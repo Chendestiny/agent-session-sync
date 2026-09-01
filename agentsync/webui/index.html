@@ -120,6 +120,26 @@ async function jget(url){
   if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text().catch(()=>"")).slice(0,200));
   return r.json();
 }
+/* 会话列表缓存：内存 + sessionStorage（点刷新才重新加载；F5 也不丢） */
+function cacheGet(src){
+  if(metasCache[src] !== undefined) return Promise.resolve(metasCache[src]);
+  try{
+    const raw = sessionStorage.getItem("ass-metas-"+src);
+    if(raw){ metasCache[src] = JSON.parse(raw); return Promise.resolve(metasCache[src]); }
+  }catch(e){}
+  return jget("/api/sessions?source="+encodeURIComponent(src)).then(ms => {
+    metasCache[src] = ms;
+    try{ sessionStorage.setItem("ass-metas-"+src, JSON.stringify(ms)); }catch(e){}
+    return ms;
+  });
+}
+function cachePurge(){
+  metasCache = {};
+  try{
+    Object.keys(sessionStorage).filter(k => k.startsWith("ass-metas-"))
+      .forEach(k => sessionStorage.removeItem(k));
+  }catch(e){}
+}
 function esc(s){
   return String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
@@ -179,13 +199,13 @@ async function renderOverview(){
     cEl.innerHTML = '<div class="card"><div class="src">📦 C 规范库</div><div class="path">尚未创建（先跑 pull）</div></div>';
   }
 
-  /* 每源并行拉 metas：单源慢不阻塞别的源 */
+  /* 每源并行拉 metas（走缓存：返回不再重新加载）；单源慢不阻塞别的源 */
   const all = {};
   await Promise.all(SOURCES.map(async src => {
     const card = document.getElementById("card-"+src);
     try{
-      const ms = await jget("/api/sessions?source="+encodeURIComponent(src));
-      metasCache[src] = ms; all[src] = ms;
+      const ms = await cacheGet(src);
+      all[src] = ms;
       if(card){
         const last = ms[0];
         let stat;
@@ -242,10 +262,9 @@ const filt = { sources:new Set(SOURCES), q:"", from:"", to:"", hideSub:true };
 async function renderSessions(){
   app.innerHTML = '<h2>会话列表</h2><div class="filters" id="fbar"></div><div id="ltable">'
     + '<div class="hint">加载中…</div></div>';
-  /* 缺的源并行补齐 */
-  const missing = SOURCES.filter(s => !metasCache[s]);
-  await Promise.all(missing.map(async src => {
-    try{ metasCache[src] = await jget("/api/sessions?source="+encodeURIComponent(src)); }
+  /* 缺的源并行补齐（走缓存） */
+  await Promise.all(SOURCES.filter(s => metasCache[s] === undefined).map(async src => {
+    try{ await cacheGet(src); }
     catch(e){ metasCache[src] = []; }
   }));
   drawFilterBar(); drawTable();
@@ -402,7 +421,7 @@ function route(){
   else if(parts[0] === "sessions") renderSessions();
   else renderOverview();
 }
-document.getElementById("refresh").onclick = () => { metasCache = {}; route(); };
+document.getElementById("refresh").onclick = () => { cachePurge(); route(); };
 window.addEventListener("hashchange", route);
 route();
 </script>
