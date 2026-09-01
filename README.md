@@ -46,7 +46,7 @@ Linux / macOS / WSL：
 
 ## 🖥️ 只读可视化（Web Dashboard）
 
-**方式一 · 全局命令**（用 install 脚本装过本工具即有，任意目录随时起，和 `hermes` / `dsh web` 一样）：
+**方式一 · 全局命令**：
 
 ```bash
 session-sync serve              # 自动开浏览器 127.0.0.1:8321（--port 可改，Ctrl+C 停）

@@ -55,8 +55,7 @@ tools\verify-dsh-backend.cmd                   # strong check via dsh's own back
 
 ## 🖥️ Read-only Web Dashboard
 
-**Option 1 · global command** (created by the install script — works from any directory,
-just like `hermes` / `dsh web`):
+**Option 1 · global command:**
 
 ```bash
 session-sync serve              # auto-opens the browser at 127.0.0.1:8321 (--port to change, Ctrl+C to stop)
