@@ -43,6 +43,7 @@ python sync.py attach-dsh --apply
 
 python sync.py archive  --source all --apply   # Markdown archive → ./archive
 python sync.py verify                          # validate imported sessions
+python sync.py serve                           # read-only web dashboard: timeline / session list / per-turn times (auto-opens 127.0.0.1:8321)
 tools\verify-dsh-backend.cmd                   # strong check via dsh's own backend (Node 22)
 ```
 
@@ -131,7 +132,8 @@ opencode project context …) are fixed in code — full breakdown in
 ## 📂 Layout
 
 See the Chinese README's 目录结构 section, or explore the tree directly:
-`AGENTS.md` (manual) · `SKILL.md` (skill bundle) · `sync.py` (CLI) · `agentsync/` (library) ·
+`AGENTS.md` (manual) · `SKILL.md` (skill bundle) · `sync.py` (CLI) · `agentsync/` (library, incl.
+`webui/` read-only dashboard served by `sync.py serve`) ·
 `docs/FORMATS.md` + `docs/agents/*.md` (deep format specs per agent) · `examples/` · `tools/`.
 
 ## 🔒 Safety Boundaries

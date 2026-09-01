@@ -128,6 +128,7 @@ python sync.py attach-dsh --apply
 
 python sync.py archive  --source all --apply   # Markdown 归档 → ./archive
 python sync.py verify                          # 校验已导入 dsh 会话
+python sync.py serve                           # 只读可视化 dashboard：总览时间轴/会话列表/轮次时间条（浏览器自动开 127.0.0.1:8321）
 python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
 python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
 python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
@@ -176,7 +177,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 ```
 📖 AGENTS.md            AI agent 操作手册（交给 agent 读的入口）
 🧩 SKILL.md             skill 封装（整目录即 skill bundle，junction 到 skills 目录）
-⌨️ sync.py              CLI 入口（status/to-dsh/attach-dsh/archive/verify/selftest）
+⌨️ sync.py              CLI 入口（status/serve/to-dsh/attach-dsh/archive/verify/selftest）
 titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-dsh --force --titles 重写）
 📐 docs/FORMATS.md      格式总览 + 归一化 IR + 索引
 🔬 docs/agents/         各家会话结构详解（深度规格分册）
@@ -193,6 +194,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档
   validate.py           dsh 事件纪律校验
+  webui/                只读 Web dashboard（serve → 127.0.0.1:8321；零写端点，页面随包离线可用）
 🗂️ archive/             归档输出
 📚 reference/dsh-chat-import/  参考仓库源码
 .test-dsh-root/ .test-zcode-db.sqlite   测试产物（可删）
