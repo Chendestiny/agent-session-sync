@@ -192,10 +192,10 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 ## 🔒 安全边界
 
 - 🔍 读取永远只读（sqlite `mode=ro` URI）。
-- ✏️ 写 dsh：只新增 `import-*` 会话目录，不触碰原生会话文件。
-- 🚫 **不写 zcode/hermes/codex/workbuddy 的存储**（zcode 写入方向已于 2026-08-26 移除）。
-- ♻️ 恢复方法：zcode db 异常时，用 `db.sqlite.cleanup-bak-*` / `db.sqlite.agentsync-bak-*`
-  覆盖回原文件（需退出 zcode）。
+- ✏️ 写入目标（dsh / codex / claude code / hermes / opencode / workbuddy）：只新增幂等导入会话
+  （`import-*` / uuid5 id），不触碰原生会话，每次写入前自动备份。
+- 🚫 **zcode 暂不写入**（写入方向已于 2026-08-26 移除，写入器存档于 `zcodewrite.py`）。
+- ♻️ 恢复方法：存储异常时，用 `*.agentsync-bak-*` 自动备份覆盖回原文件（需退出对应应用）。
 
 ---
 

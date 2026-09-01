@@ -146,8 +146,10 @@ See the Chinese README's 目录结构 section, or explore the tree directly:
 ## 🔒 Safety Boundaries
 
 - Reads are always read-only (sqlite `mode=ro` URI).
-- Writes to dsh only create new `import-*` session directories; native sessions are never touched.
-- Never writes zcode/hermes/codex/workbuddy stores.
+- Write targets (dsh / codex / claude code / hermes / opencode / workbuddy) only add idempotent
+  imported sessions (`import-*` / uuid5 ids); native sessions are never touched, and every
+  mutation is preceded by an automatic backup.
+- zcode is not written for now (that direction was removed 2026-08-26; the writer is archived in `zcodewrite.py`).
 - Restore: use the auto backups (`*.agentsync-bak-*`) created before every mutation.
 
 ---
