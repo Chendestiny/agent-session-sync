@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-session-sync · 只读 dashboard</title>
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --line:#2a2f3c;
+  --fg:#e6e6e6; --dim:#9aa3b5; --accent:#4f8cff; --err:#f87171; --ok:#34d399;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+header{display:flex;align-items:center;gap:18px;padding:10px 18px;
+  background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-weight:700;font-size:16px}
+.brand .tag{font-size:11px;font-weight:400;color:var(--dim);border:1px solid var(--line);
+  border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:2px}
+nav{display:flex;gap:4px}
+nav a{color:var(--dim);text-decoration:none;padding:5px 12px;border-radius:6px}
+nav a.active{color:var(--fg);background:var(--panel2)}
+nav a:hover{color:var(--fg)}
+#refresh{margin-left:auto;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+  border-radius:6px;padding:5px 14px;cursor:pointer}
+#refresh:hover{border-color:var(--accent)}
+main{padding:18px;max-width:1280px;margin:0 auto}
+h2{font-size:15px;color:var(--dim);font-weight:600;margin:26px 0 10px}
+h2:first-child{margin-top:0}
+.err{color:var(--err);white-space:pre-wrap}
+.dim{color:var(--dim)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:86px}
+.card .src{display:flex;align-items:center;gap:8px;font-weight:700}
+.card .src .sw{width:10px;height:10px;border-radius:3px;flex:none}
+.card .path{font-size:11px;color:var(--dim);margin-top:6px;word-break:break-all}
+.card .stat{font-size:12px;color:var(--dim);margin-top:8px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.dot.on{background:var(--ok)} .dot.off{background:var(--err)}
+.kv{font-size:12px;color:var(--dim);margin-top:4px}
+.kv b{color:var(--fg);font-weight:600}
+/* 时间轴 */
+.tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto}
+.tl-axis{position:relative;height:20px;margin-left:96px;color:var(--dim);font-size:11px}
+.tl-axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.lane{display:flex;align-items:center;height:30px}
+.lane .lb{width:88px;flex:none;font-size:12px;color:var(--dim);text-align:right;padding-right:8px}
+.lane .track{position:relative;flex:1;height:22px;background:var(--panel2);
+  border-radius:4px;overflow:hidden}
+.bar{position:absolute;top:4px;height:14px;border-radius:2px;min-width:3px;opacity:.85;cursor:pointer}
+.bar:hover{opacity:1;outline:1px solid #fff3}
+/* 筛选 */
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:2px 12px;cursor:pointer;
+  color:var(--dim);background:var(--panel);font-size:12px;user-select:none}
+.chip.on{color:var(--fg);border-color:currentColor}
+.filters input[type=date],.filters input[type=text]{
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:4px 8px}
+.filters input[type=text]{width:200px}
+/* 表格 */
+table{border-collapse:collapse;width:100%;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--dim);font-weight:600;background:var(--panel2);position:sticky;top:0}
+tr.row{cursor:pointer} tr.row:hover{background:var(--panel2)}
+.badge{display:inline-block;border-radius:4px;padding:0 8px;font-size:11px;
+  color:#0f1115;font-weight:700}
+/* 详情 */
+.hd{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.hd .t{font-size:16px;font-weight:700;margin:6px 0 2px}
+.turn{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:8px 12px;margin-top:6px;cursor:pointer}
+.turn:hover{border-color:var(--accent)}
+.turn .meta{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.turn .idx{color:var(--dim);font-size:12px}
+.turn .tm{color:var(--accent);font-size:12px}
+.turn .pv{margin-top:2px;color:var(--fg)}
+.turn .steps{margin-top:8px;cursor:default}
+.blk{background:var(--panel2);border-radius:6px;padding:6px 10px;margin-top:6px;font-size:13px}
+.blk.reasoning{color:var(--dim);font-style:italic}
+.blk pre{margin:0;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
+.tc{color:#ffd479} .tr{color:var(--dim)} .err-block{color:var(--err)}
+svg .tick{stroke:var(--line)} svg text{fill:var(--dim);font-size:10px}
+.hint{color:var(--dim);font-size:12px}
+.back{color:var(--accent);text-decoration:none;display:inline-block;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">agent-session-sync<span class="tag">只读 dashboard</span></div>
+  <nav>
+    <a href="#/" data-view="overview">总览</a>
+    <a href="#/sessions" data-view="sessions">会话列表</a>
+  </nav>
+  <button id="refresh" title="丢弃缓存重新加载">刷新</button>
+</header>
+<main id="app"></main>
+<script>
+"use strict";
+const SOURCES = ["zcode","hermes","dsh","codex","workbuddy","claude","opencode"];
+const COLORS = {zcode:"#f59e0b",hermes:"#10b981",dsh:"#4f8cff",codex:"#a78bfa",
+                workbuddy:"#f472b6",claude:"#fb923c",opencode:"#22d3ee"};
+const SRC_CN  = {zcode:"ZCode",hermes:"Hermes",dsh:"DSH",codex:"Codex",
+                 workbuddy:"WorkBuddy",claude:"Claude Code",opencode:"OpenCode"};
+let metasCache = {};          // source -> metas[]
+const app = document.getElementById("app");
+
+/* ── 工具 ─────────────────────────────────────────── */
+async function jget(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text().catch(()=>"")).slice(0,200));
+  return r.json();
+}
+function esc(s){
+  return String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+const p2 = n => String(n).padStart(2,"0");
+function fmt(ms){
+  if(!ms) return "-";
+  const d = new Date(ms);
+  return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())+" "+p2(d.getHours())+":"+p2(d.getMinutes());
+}
+function fmtShort(ms){
+  if(!ms) return "-";
+  const d = new Date(ms);
+  return p2(d.getMonth()+1)+"-"+p2(d.getDate())+" "+p2(d.getHours())+":"+p2(d.getMinutes());
+}
+function errBox(msg){ return '<div class="err">加载失败：'+esc(msg)+"</div>"; }
+function badge(src){ return '<span class="badge" style="background:'+COLORS[src]+'">'+esc(SRC_CN[src]||src)+"</span>"; }
+
+/* ── 视图：总览 ───────────────────────────────────── */
+async function renderOverview(){
+  app.innerHTML = '<h2>源健康</h2><div class="cards" id="srcCards"></div>'
+    + '<h2>规范库 C（~/.session-sync）</h2><div class="cards" id="cCard"></div>'
+    + '<h2>会话时间轴（位置=创建时间 · 宽度=首末轮跨度 · 点击下钻）</h2>'
+    + '<div class="tl" id="tl"><div class="hint">加载中…</div></div>';
+  let ov;
+  try{ ov = await jget("/api/overview"); }
+  catch(e){ document.getElementById("tl").innerHTML = errBox(e.message); return; }
+
+  /* 源卡：先画健康，再并行补会话数 */
+  const cards = document.getElementById("srcCards");
+  cards.innerHTML = ov.sources.map(s =>
+    '<div class="card" id="card-'+s.name+'">'
+    + '<div class="src"><span class="dot '+(s.ok?"on":"off")+'"></span>'
+    + '<span class="sw" style="background:'+COLORS[s.name]+'"></span>'+esc(SRC_CN[s.name]||s.name)+'</div>'
+    + '<div class="path">'+esc(s.path||"未找到")+'</div>'
+    + '<div class="stat">…</div></div>').join("");
+  document.querySelectorAll(".card .stat").forEach(el => el.textContent = "统计加载中…");
+
+  const cEl = document.getElementById("cCard");
+  if(ov.store){
+    const st = ov.store;
+    const counts = Object.entries(st.counts||{}).map(([k,v])=>k+" "+v).join(" · ")||"（空）";
+    const pull = Object.entries(st.state||{}).map(([k,v])=>k+" "+fmtShort(v)).join(" · ");
+    const push = Object.entries(st.push||{}).map(([t,m])=>t+"（"+Object.entries(m).map(([k,v])=>k+" "+fmtShort(v)).join(" · ")+"）").join("；");
+    cEl.innerHTML = '<div class="card"><div class="src">📦 C 规范库</div>'
+      + '<div class="path">'+esc(st.dir)+'</div>'
+      + '<div class="kv">会话：<b>'+esc(counts)+'</b></div>'
+      + (pull?'<div class="kv">pull 基准：'+esc(pull)+'</div>':"")
+      + (push?'<div class="kv">push 水位：'+esc(push)+'</div>':"")+'</div>';
+  }else{
+    cEl.innerHTML = '<div class="card"><div class="src">📦 C 规范库</div><div class="path">尚未创建（先跑 pull）</div></div>';
+  }
+
+  /* 每源并行拉 metas：单源慢不阻塞别的源 */
+  const all = {};
+  await Promise.all(SOURCES.map(async src => {
+    const card = document.getElementById("card-"+src);
+    try{
+      const ms = await jget("/api/sessions?source="+encodeURIComponent(src));
+      metasCache[src] = ms; all[src] = ms;
+      if(card){
+        const last = ms[0];
+        card.querySelector(".stat").innerHTML =
+          '<b>'+ms.length+'</b> 个会话'+(last?' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」":"");
+      }
+    }catch(e){
+      if(card) card.querySelector(".stat").innerHTML = '<span class="err">'+esc(e.message)+"</span>";
+    }
+  }));
+  renderTimeline(all);
+}
+
+function renderTimeline(all){
+  const tl = document.getElementById("tl");
+  const entries = Object.values(all).flat();
+  if(!entries.length){ tl.innerHTML = '<div class="hint">暂无会话数据</div>'; return; }
+  const t0 = Math.min(...entries.map(m => m.span_first||m.created_at||Infinity).filter(Number.isFinite));
+  const t1raw = Math.max(...entries.map(m => Math.max(m.span_last||0, m.updated_at||0)));
+  let t1 = t1raw;
+  if(!t0 || !t1 || t1 - t0 < 3600e3){ const now = Date.now(); t1 = Math.max(t1, now); }  // 退化为「截至现在」
+  const dom = Math.max(t1 - t0, 1);
+  const x = ms => ((ms - t0) / dom * 100).toFixed(3);
+
+  let html = '<div class="tl-axis">';
+  for(let i = 0; i <= 4; i++){
+    const ms = t0 + dom * i / 4;
+    html += '<span style="left:'+(i*25)+'%">' + fmtShort(ms) + "</span>";
+  }
+  html += "</div>";
+  for(const src of SOURCES){
+    const ms = (all[src]||[]).slice().sort((a,b)=>a.span_first-b.span_first);
+    let bars = "";
+    for(const m of ms){
+      const l = x(m.span_first||m.created_at||t0);
+      const w = Math.max((Math.max(m.span_last||0, m.updated_at||0) - (m.span_first||m.created_at||t0)) / dom * 100, .4);
+      const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
+      bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+COLORS[src]+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
+    }
+    html += '<div class="lane"><div class="lb">'+esc(SRC_CN[src]||src)+" "+(all[src]?all[src].length:0)+'</div><div class="track">'+bars+"</div></div>";
+  }
+  tl.innerHTML = html;
+  tl.querySelectorAll(".bar").forEach(b => b.onclick = () => { location.hash = b.dataset.href; });
+}
+
+/* ── 视图：会话列表 ───────────────────────────────── */
+const filt = { sources:new Set(SOURCES), q:"", from:"", to:"" };
+async function renderSessions(){
+  app.innerHTML = '<h2>会话列表</h2><div class="filters" id="fbar"></div><div id="ltable">'
+    + '<div class="hint">加载中…</div></div>';
+  /* 缺的源并行补齐 */
+  const missing = SOURCES.filter(s => !metasCache[s]);
+  await Promise.all(missing.map(async src => {
+    try{ metasCache[src] = await jget("/api/sessions?source="+encodeURIComponent(src)); }
+    catch(e){ metasCache[src] = []; }
+  }));
+  drawFilterBar(); drawTable();
+}
+function drawFilterBar(){
+  const bar = document.getElementById("fbar");
+  bar.innerHTML = SOURCES.map(s =>
+    '<span class="chip'+(filt.sources.has(s)?" on":"")+'" data-s="'+s+'" style="'+(filt.sources.has(s)?"color:"+COLORS[s]+" !important;border-color:"+COLORS[s]:"")+'">'+esc(SRC_CN[s]||s)+"</span>").join("")
+    + ' <input type="date" id="fFrom" value="'+esc(filt.from)+'" title="最后活跃 ≥"> ~ '
+    + '<input type="date" id="fTo" value="'+esc(filt.to)+'" title="创建 ≤">'
+    + ' <input type="text" id="fQ" placeholder="标题 / id 关键词" value="'+esc(filt.q)+'">'
+    + ' <button class="chip on" id="fGo">筛选</button>'
+    + ' <span class="hint">共 <b id="fN">0</b> 条</span>';
+  bar.querySelectorAll(".chip[data-s]").forEach(c => c.onclick = () => {
+    const s = c.dataset.s;
+    filt.sources.has(s) ? filt.sources.delete(s) : filt.sources.add(s);
+    drawFilterBar(); drawTable();
+  });
+  document.getElementById("fGo").onclick = () => {
+    filt.from = document.getElementById("fFrom").value;
+    filt.to = document.getElementById("fTo").value;
+    filt.q = document.getElementById("fQ").value.trim();
+    drawFilterBar(); drawTable();
+  };
+  document.getElementById("fQ").addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("fGo").click(); });
+}
+function drawTable(){
+  const box = document.getElementById("ltable");
+  const fromMs = filt.from ? new Date(filt.from+"T00:00:00").getTime() : 0;
+  const toMs = filt.to ? new Date(filt.to+"T23:59:59").getTime() : 0;
+  const ql = filt.q.toLowerCase();
+  let rows = Object.entries(metasCache).flatMap(([src, ms]) => ms.map(m => ({...m, source:src})));
+  rows = rows.filter(m =>
+    filt.sources.has(m.source)
+    && (!fromMs || m.updated_at >= fromMs)
+    && (!toMs || m.created_at <= toMs)
+    && (!ql || (m.title||"").toLowerCase().includes(ql) || (m.id||"").toLowerCase().includes(ql)));
+  rows.sort((a,b) => b.updated_at - a.updated_at);
+  const nEl = document.getElementById("fN"); if(nEl) nEl.textContent = rows.length;
+  if(!rows.length){ box.innerHTML = '<div class="hint">该筛选下无会话</div>'; return; }
+  box.innerHTML = '<table><thead><tr><th>源</th><th>标题</th><th>创建时间</th><th>最后活动</th>'
+    + '<th>轮数</th><th>消息</th><th>工具调用</th></tr></thead><tbody>'
+    + rows.map(m =>
+      '<tr class="row" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
+      + "<td>"+badge(m.source)+"</td>"
+      + "<td>"+esc((m.title||"(无标题)").slice(0,60))+"</td>"
+      + "<td>"+fmt(m.created_at)+"</td><td>"+fmt(m.updated_at)+"</td>"
+      + "<td>"+m.turns+"</td><td>"+m.messages+"</td><td>"+m.tools+"</td></tr>").join("")
+    + "</tbody></table>";
+  box.querySelectorAll("tr.row").forEach(r => r.onclick = () => { location.hash = r.dataset.href; });
+}
+
+/* ── 视图：会话详情 ───────────────────────────────── */
+const expanded = new Set();
+async function renderDetail(src, id){
+  expanded.clear();
+  app.innerHTML = '<a class="back" href="#/sessions">← 返回列表</a><div id="dbody"><div class="hint">加载中…</div></div>';
+  const box = document.getElementById("dbody");
+  let d;
+  try{
+    d = await jget("/api/session?source="+encodeURIComponent(src)+"&id="+encodeURIComponent(id));
+  }catch(e){ box.innerHTML = errBox(e.message); return; }
+  const times = (d.turns||[]).map(t => t.time||0).filter(Boolean);
+  const tmin = times.length ? Math.min(...times) : 0;
+  const tmax = times.length ? Math.max(...times) : 0;
+  let html = '<div class="hd">'+badge(d.source)
+    + '<div class="t">'+esc(d.title||"(无标题)")+"</div>"
+    + '<div class="kv">cwd：<b>'+esc(d.cwd||"-")+'</b></div>'
+    + '<div class="kv">跨度：<b>'+fmt(d.created_at)+" ~ "+fmt(d.updated_at||tmax)+'</b>'
+    + " · <b>"+(d.turns||[]).length+"</b> 轮</div>"
+    + '<div class="kv mono">id：'+esc(d.source_id)+'</div>'
+    + (d.source_path?'<div class="kv mono">源文件：'+esc(d.source_path)+"</div>":"")
+    + "</div>";
+
+  /* 轮次时间条：压平 bug 一眼可见 */
+  html += '<h2>轮次时间分布</h2><div class="tl">';
+  if(!times.length){
+    html += '<div class="hint">该会话无轮次时间（旧数据，Turn.time 修复前导入）</div>';
+  }else{
+    let a = tmin, b = Math.max(tmax, tmin + 3600e3);
+    const W = 1000, dom = b - a;
+    let svg = '<svg viewBox="0 0 '+W+' 64" style="width:100%;height:64px" preserveAspectRatio="none">';
+    for(let i = 0; i <= 4; i++){
+      const xx = W * i / 4;
+      svg += '<line class="tick" x1="'+xx+'" y1="50" x2="'+xx+'" y2="58"/>'
+           + '<text x="'+xx+'" y="63" text-anchor="middle">'+fmtShort(a + dom*i/4)+"</text>";
+    }
+    (d.turns||[]).forEach((t, i) => {
+      if(!t.time) return;
+      const xx = ((t.time - a) / dom * W).toFixed(1);
+      svg += '<line x1="'+xx+'" y1="6" x2="'+xx+'" y2="46" stroke="'+COLORS[d.source]
+           + '" stroke-width="2"><title>#'+(i+1)+" "+fmt(t.time)+"</title></line>";
+    });
+    svg += "</svg>";
+    html += svg;
+  }
+  html += "</div>";
+
+  /* 轮次列表 */
+  html += '<h2>轮次（点击展开步骤）</h2>';
+  (d.turns||[]).forEach((t, i) => {
+    const tools = (t.steps||[]).reduce((n,s)=>n+(s.tool_calls||[]).length,0);
+    const msgs = 1 + (t.steps||[]).length + (t.steps||[]).reduce((n,s)=>n+(s.tool_results||[]).length,0);
+    html += '<div class="turn" data-i="'+i+'"><div class="meta">'
+      + '<span class="idx">#'+(i+1)+"</span>"
+      + '<span class="tm">'+fmt(t.time)+'</span>'
+      + '<span class="dim">'+msgs+' 消息 · '+tools+' 工具</span></div>'
+      + '<div class="pv">'+esc((t.prompt||"").slice(0,200))+((t.prompt||"").length>200?"…":"")+"</div>"
+      + '<div class="steps" style="display:'+(expanded.has(i)?"block":"none")+'">'+stepsHtml(t)+"</div></div>";
+  });
+  if(!(d.turns||[]).length) html += '<div class="hint">（无轮次）</div>';
+  box.innerHTML = html;
+  box.querySelectorAll(".turn").forEach(el => el.onclick = () => {
+    const i = +el.dataset.i;
+    expanded.has(i) ? expanded.delete(i) : expanded.add(i);
+    el.querySelector(".steps").style.display = expanded.has(i) ? "block" : "none";
+  });
+}
+function stepsHtml(t){
+  let html = "";
+  (t.steps||[]).forEach((s, si) => {
+    (s.content||[]).forEach(b => {
+      if(b.type === "text") html += '<div class="blk"><pre>'+esc(b.text||"")+"</pre></div>";
+      else if(b.type === "reasoning") html += '<div class="blk reasoning"><pre>'+esc(b.text||"")+"</pre></div>";
+      else if(b.type === "tool-call") html += '<div class="blk tc">🔧 '+esc(b.name)+" <pre>"+esc(b.arguments||"")+"</pre></div>";
+    });
+    (s.tool_calls||[]).forEach(c => {
+      html += '<div class="blk tc">▶ '+esc(c.name)+" <pre>"+esc(c.arguments||"")+"</pre></div>";
+    });
+    (s.tool_results||[]).forEach(r => {
+      const text = (r.content||[]).filter(x=>x.type==="text").map(x=>x.text||"").join("\n").slice(0,2000);
+      html += '<div class="blk tr'+(r.is_error?" err-block":"")+'">⬅ '+(r.is_error?"(错误) ":"结果 ")
+            + "<pre>"+esc(text)+((r.content||[]).some(x=>(x.text||"").length>2000)?"…":"")+"</pre></div>";
+    });
+  });
+  return html || '<div class="hint">（空步骤）</div>';
+}
+
+/* ── 路由 ─────────────────────────────────────────── */
+function route(){
+  const h = location.hash || "#/";
+  const view = h.startsWith("#/session/") ? "sessions" : (h === "#/sessions" ? "sessions" : "overview");
+  document.querySelectorAll("nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
+  const parts = h.slice(2).split("/").map(decodeURIComponent);
+  if(parts[0] === "session" && parts[1] && parts[2]) renderDetail(parts[1], parts[2]);
+  else if(parts[0] === "sessions") renderSessions();
+  else renderOverview();
+}
+document.getElementById("refresh").onclick = () => { metasCache = {}; route(); };
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>
