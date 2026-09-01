@@ -143,6 +143,22 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
 
+## 🖥️ 只读可视化（Web Dashboard）
+
+```bash
+python sync.py serve        # 起本地服务并自动开浏览器（默认 127.0.0.1:8321，--port 可改，Ctrl+C 停）
+```
+
+| 视图 | 看什么 |
+|---|---|
+| 总览 | 7 家源健康灯/实时会话数 + C 库水位线 + 7 泳道会话时间轴（位置=创建时间，宽度=跨度） |
+| 会话列表 | 按源/日期/关键词筛选，点行下钻 |
+| 会话详情 | 轮次时间条（时间戳是否压平一眼可见）+ 轮次与工具调用明细 |
+
+全只读：零写端点（POST 一律 405）、仅绑定 127.0.0.1、页面离线可用（无 CDN）；
+零新依赖（标准库 HTTP 服务），clone 后 `pip install zstandard`（唯一第三方依赖，读 dsh 源用）即可跑；
+数据实时读源、无缓存。下载 zip 解压的同理，进入目录后两条命令即可。
+
 ## 🧩 作为 skill 使用（整目录即 skill bundle）
 
 本目录本身就是 skill 包（`SKILL.md` + `sync.py` + `📦 agentsync/` + `🛠️ tools/` + `docs/`），

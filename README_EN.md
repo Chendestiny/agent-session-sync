@@ -100,6 +100,22 @@ git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-
 pip install zstandard && python sync.py selftest
 ```
 
+## 🖥️ Read-only Web Dashboard
+
+```bash
+python sync.py serve        # local server + auto-opens the browser (default 127.0.0.1:8321, --port to change, Ctrl+C to stop)
+```
+
+| View | What you see |
+|---|---|
+| Overview | per-source health/count + C-store watermarks + 7-lane session timeline (position = created, width = span) |
+| Sessions | filter by source/date/keyword, click a row to drill down |
+| Detail | per-turn time bars (flattened timestamps instantly visible) + turns & tool-call details |
+
+Fully read-only: zero write endpoints (POST → 405), binds 127.0.0.1 only, offline page (no CDN);
+no new dependencies (stdlib HTTP server) — clone, `pip install zstandard` (the only third-party dep,
+used for reading the dsh source), run. Fresh reads on every request, no cache.
+
 ## 🧩 Use as a Skill (the whole directory IS the skill bundle)
 
 ```bat
