@@ -35,6 +35,7 @@ python sync.py attach-dsh --apply
 python sync.py archive  --source all --apply   # Markdown archive → ./archive
 python sync.py verify                          # validate imported sessions
 python sync.py serve                           # read-only web dashboard: timeline / session list / per-turn times (auto-opens 127.0.0.1:8321)
+python sync.py prune --session "title-or-id-substring" --hard --apply   # slim dsh: delete named sessions outright (dry-run first; --older-than N; --native to also pick native ones)
 tools\verify-dsh-backend.cmd                   # strong check via dsh's own backend (Node 22)
 ```
 

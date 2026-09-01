@@ -122,6 +122,7 @@ python sync-finish.py --check                   # 一键收尾·只读预览（p
 python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
 python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
 python sync-finish.py --sources all --scope all --confirm-history   # 历史全量需显式确认
+python sync.py prune --session "标题或id子串" --hard --apply          # dsh 瘦身：点名直接删除（先跑 dry-run 看命中；--older-than N 限天数；--native 连原生会话点名）
 tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校验（Node 22）
 ```
 

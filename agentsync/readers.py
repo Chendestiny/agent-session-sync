@@ -71,14 +71,20 @@ def _zstd_decode_all(data: bytes) -> bytes:
 # ── zcode 读取器（~/.zcode/cli/db/db.sqlite）────────────────────────────
 
 
-def read_zcode(db_path, include_subagents: bool = False) -> list[Session]:
+def read_zcode(db_path, include_subagents: bool = False, include_archived: bool = False) -> list[Session]:
+    """include_archived=False：归档会话（time_archived 非空）不进同步——回收站不同步。"""
     con = sqlite3.connect(f"file:{str(db_path).replace(chr(92), '/')}?mode=ro", uri=True)
     try:
         cur = con.cursor()
         sessions = []
-        parent_filter = "WHERE parent_id IS NULL" if not include_subagents else ""
+        conds = []
+        if not include_subagents:
+            conds.append("parent_id IS NULL")
+        if not include_archived:
+            conds.append("time_archived IS NULL")
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         session_rows = cur.execute(
-            f"SELECT id, directory, title, time_created, time_updated FROM session {parent_filter} ORDER BY time_created"
+            f"SELECT id, directory, title, time_created, time_updated FROM session {where} ORDER BY time_created"
         ).fetchall()
         for sid, directory, title, created, updated in session_rows:
             msgs = list(
@@ -317,107 +323,125 @@ def _hermes_user_text(content) -> str:
 # ── dsh 读取器（~/.dsh/sessions/--proj--/<id>/session.jsonl(.zstd)）─────
 
 
-def read_dsh(sessions_root) -> list[Session]:
-    root = str(sessions_root)
-    sessions = []
-    for path in sorted(glob.glob(os.path.join(root, "*", "*", "session.jsonl*"))):
-        try:
-            raw = open(path, "rb").read()
-            if path.endswith(".zstd"):
-                raw = _zstd_decode_all(raw)
-            lines = _parse_jsonl(raw.decode("utf-8", errors="replace"))
-        except Exception:
-            continue
-        header = next((o for o in lines if o.get("type") == "session"), None)
-        if not header:
-            continue
-        title = ""
-        for o in reversed(lines):
-            if o.get("type") == "session/title" and isinstance(o.get("data"), dict):
-                title = str(o["data"].get("title") or "")
-                break
-        turns: list[Turn] = []
-        cur_turn: Turn | None = None
-        cur_step: Step | None = None
-        call_steps: dict[str, Step] = {}
-        for o in lines:
-            t = o.get("type")
-            data = o.get("data") if isinstance(o.get("data"), dict) else {}
-            if t == "turn/start":
+def _read_dsh_file(path: str) -> Session | None:
+    """解析单个 dsh session.jsonl[.zstd] → Session（模块级：进程池 worker 需可 pickle）。"""
+    try:
+        raw = open(path, "rb").read()
+        if path.endswith(".zstd"):
+            raw = _zstd_decode_all(raw)
+        lines = _parse_jsonl(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+    header = next((o for o in lines if o.get("type") == "session"), None)
+    if not header:
+        return None
+    title = ""
+    for o in reversed(lines):
+        if o.get("type") == "session/title" and isinstance(o.get("data"), dict):
+            title = str(o["data"].get("title") or "")
+            break
+    turns: list[Turn] = []
+    cur_turn: Turn | None = None
+    cur_step: Step | None = None
+    call_steps: dict[str, Step] = {}
+    for o in lines:
+        t = o.get("type")
+        data = o.get("data") if isinstance(o.get("data"), dict) else {}
+        if t == "turn/start":
+            cur_turn = Turn(prompt="", time=o.get("time") or 0)
+            turns.append(cur_turn)
+            cur_step = None
+        elif t == "user/message":
+            if cur_turn is not None and not cur_turn.prompt:
+                src = data.get("source") or {}
+                if src.get("kind") == "plugin":
+                    continue  # 导入时注入的环境声明，重导出时跳过
+                blocks = data.get("content") if isinstance(data.get("content"), list) else []
+                text = "\n".join(
+                    b.get("text", "")
+                    for b in blocks
+                    if isinstance(b, dict) and b.get("type") == "text"
+                ).strip()
+                if text:
+                    cur_turn.prompt = text
+        elif t == "assistant/message":
+            msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+            if cur_turn is None:
                 cur_turn = Turn(prompt="", time=o.get("time") or 0)
                 turns.append(cur_turn)
-                cur_step = None
-            elif t == "user/message":
-                if cur_turn is not None and not cur_turn.prompt:
-                    src = data.get("source") or {}
-                    if src.get("kind") == "plugin":
-                        continue  # 导入时注入的环境声明，重导出时跳过
-                    blocks = data.get("content") if isinstance(data.get("content"), list) else []
-                    text = "\n".join(
-                        b.get("text", "")
-                        for b in blocks
-                        if isinstance(b, dict) and b.get("type") == "text"
-                    ).strip()
-                    if text:
-                        cur_turn.prompt = text
-            elif t == "assistant/message":
-                msg = data.get("message") if isinstance(data.get("message"), dict) else {}
-                if cur_turn is None:
-                    cur_turn = Turn(prompt="", time=o.get("time") or 0)
-                    turns.append(cur_turn)
+            cur_step = Step()
+            src = msg.get("source") or {}
+            if isinstance(src.get("model"), str):
+                cur_step.model = src["model"]
+            for b in msg.get("content") or []:
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") in ("text", "reasoning") and isinstance(b.get("text"), str):
+                    cur_step.content.append({"type": b["type"], "text": b["text"]})
+                elif b.get("type") == "tool-call":
+                    mapped = {"id": b.get("id") or "", "name": b.get("name") or "unknown", "arguments": b.get("arguments") or "{}"}
+                    cur_step.content.append({"type": "tool-call", **mapped})
+                    cur_step.tool_calls.append(mapped)
+            cur_turn.steps.append(cur_step)
+        elif t == "tool/call":
+            if cur_turn is None:
+                continue
+            if cur_step is None:
                 cur_step = Step()
-                src = msg.get("source") or {}
-                if isinstance(src.get("model"), str):
-                    cur_step.model = src["model"]
-                for b in msg.get("content") or []:
-                    if not isinstance(b, dict):
-                        continue
-                    if b.get("type") in ("text", "reasoning") and isinstance(b.get("text"), str):
-                        cur_step.content.append({"type": b["type"], "text": b["text"]})
-                    elif b.get("type") == "tool-call":
-                        mapped = {"id": b.get("id") or "", "name": b.get("name") or "unknown", "arguments": b.get("arguments") or "{}"}
-                        cur_step.content.append({"type": "tool-call", **mapped})
-                        cur_step.tool_calls.append(mapped)
                 cur_turn.steps.append(cur_step)
-            elif t == "tool/call":
-                if cur_turn is None:
-                    continue
-                if cur_step is None:
-                    cur_step = Step()
-                    cur_turn.steps.append(cur_step)
-                mapped = {"id": data.get("callId") or "", "name": data.get("name") or "unknown", "arguments": data.get("arguments") or "{}"}
-                cur_step.content.append({"type": "tool-call", **mapped})
-                cur_step.tool_calls.append(mapped)
-                if mapped["id"]:
-                    call_steps[mapped["id"]] = cur_step
-            elif t == "tool/result":
-                msg = data.get("message") if isinstance(data.get("message"), dict) else {}
-                call_id = ""
-                inner: list[dict] = []
-                for b in msg.get("content") or []:
-                    if isinstance(b, dict) and b.get("type") == "tool-result":
-                        call_id = b.get("toolCallId") or call_id
-                        inner = b.get("content") or []
-                step = call_steps.get(call_id)
-                if step is None:
-                    continue
-                step.tool_results.append(ToolResult(call_id, inner, bool(msg.get("isError"))))
-        turns = [t for t in turns if t.prompt or t.steps]
-        if not turns:
-            continue
-        sessions.append(
-            Session(
-                source="dsh",
-                source_id=str(header.get("id") or os.path.basename(os.path.dirname(path))),
-                title=title.strip(),
-                cwd=header.get("cwd"),
-                created_at=_ms(header.get("createdAt")),
-                model=None,
-                turns=turns,
-                source_path=path,
-            )
-        )
-    return sessions
+            mapped = {"id": data.get("callId") or "", "name": data.get("name") or "unknown", "arguments": data.get("arguments") or "{}"}
+            cur_step.content.append({"type": "tool-call", **mapped})
+            cur_step.tool_calls.append(mapped)
+            if mapped["id"]:
+                call_steps[mapped["id"]] = cur_step
+        elif t == "tool/result":
+            msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+            call_id = ""
+            inner: list[dict] = []
+            for b in msg.get("content") or []:
+                if isinstance(b, dict) and b.get("type") == "tool-result":
+                    call_id = b.get("toolCallId") or call_id
+                    inner = b.get("content") or []
+            step = call_steps.get(call_id)
+            if step is None:
+                continue
+            step.tool_results.append(ToolResult(call_id, inner, bool(msg.get("isError"))))
+    turns = [t for t in turns if t.prompt or t.steps]
+    if not turns:
+        return None
+    return Session(
+        source="dsh",
+        source_id=str(header.get("id") or os.path.basename(os.path.dirname(path))),
+        title=title.strip(),
+        cwd=header.get("cwd"),
+        created_at=_ms(header.get("createdAt")),
+        model=None,
+        turns=turns,
+        source_path=path,
+    )
+
+
+def read_dsh(sessions_root) -> list[Session]:
+    """读全部 dsh 会话。文件级并行（进程池）：98 万行 JSONL 全量解析 22s → ~5s。
+
+    worker 必须是模块级函数（Windows spawn pickle）；主入口无 __main__ 守卫等
+    受限环境下自动回退串行，行为不变仅慢。
+    """
+    root = str(sessions_root)
+    paths = sorted(glob.glob(os.path.join(root, "*", "*", "session.jsonl*")))
+    if not paths:
+        return []
+    workers = min(6, (os.cpu_count() or 4), len(paths))
+    if workers > 1:
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+
+            with ProcessPoolExecutor(max_workers=workers) as ex:
+                results = list(ex.map(_read_dsh_file, paths, chunksize=8))
+            return [s for s in results if s is not None]
+        except Exception:
+            pass  # 进程池不可用 → 串行兜底
+    return [s for s in map(_read_dsh_file, paths) if s is not None]
 
 
 # ── WorkBuddy 读取器（~/.workbuddy[-ai]/：workbuddy.db + projects/<slug>/<id>.jsonl）──
@@ -1101,7 +1125,7 @@ def load_sources(which, p):
     if "zcode" in which and p.zcode_db:
         loaded["zcode"] = read_zcode(p.zcode_db)
     if "hermes" in which and p.hermes_db:
-        loaded["hermes"] = read_hermes(p.hermes_db)
+        loaded["hermes"] = read_hermes(p.hermes_db, include_archived=False)
     if "dsh" in which and p.dsh_sessions:
         loaded["dsh"] = read_dsh(p.dsh_sessions)
     if "codex" in which and p.codex_sessions:

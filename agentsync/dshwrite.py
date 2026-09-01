@@ -409,24 +409,34 @@ def _is_junk(title: str, first_prompt: str, n_turns: int) -> bool:
     return False
 
 
-def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None) -> dict:
+def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None,
+               picked: list[str] | None = None, include_native: bool = False,
+               older_than_days: int | None = None) -> dict:
     """扫描导入会话 → 清理计划。
 
     sources: {源名: 当前源库仍存在的 source_id 集合}；不在集合中的导入 = 孤儿。
-    返回 {orphans, junk, detail: {sid: {reason,source,title,turns,prompt}}, paths}
+    picked: --session 子串列表，命中（id 或标题）即进入 picked 类（人工点名，不受天数过滤）。
+    include_native: 连原生 dsh 会话一起扫描（慢：全目录解析；原生会话只经点名进入，不做孤儿/垃圾判定）。
+    older_than_days: 孤儿/垃圾类别只清最后活跃早于 N 天的（点名类不受限）。
+    返回 {orphans, junk, picked, detail: {sid: {reason,source,title,turns,prompt,last_ms,native}}, paths}
     """
     import glob as _glob
+    import time as _time
 
+    pattern = "*" if include_native else "import-*"
+    cutoff_ms = (int(_time.time() * 1000) - int(older_than_days) * 86400000) if older_than_days else 0
     detail: dict[str, dict] = {}
     paths: dict[str, str] = {}
-    for path in sorted(_glob.glob(os.path.join(str(dsh_root), "*", "import-*", "session.jsonl*"))):
+    for path in sorted(_glob.glob(os.path.join(str(dsh_root), "*", pattern, "session.jsonl*"))):
         sid = os.path.basename(os.path.dirname(path))
+        if not include_native and not sid.startswith("import-"):
+            continue
         try:
             header, events = read_log_events(path)
         except Exception:
             continue
         marker = next((e for e in events if e.get("type") == "session/imported"), {})
-        src = marker.get("data", {}).get("tool", "?")
+        src = marker.get("data", {}).get("tool", "dsh" if not sid.startswith("import-") else "?")
         title_ev = next((e for e in reversed(events) if e.get("type") == "session/title"), None)
         title = (title_ev or {}).get("data", {}).get("title", "")
         for pref in ("[hermes] ", "[codex] ", "[workbuddy] ", "[zcode] ",
@@ -441,10 +451,23 @@ def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None) -> dic
                 b.get("text", "") for b in first_user["data"].get("content", []) if isinstance(b, dict)
             )
         n_turns = sum(1 for e in events if e.get("type") == "turn/start")
+        last_ms = max((e.get("time") or 0) for e in events) if events else 0
         paths[sid] = path
-        detail[sid] = {"source": src, "title": title, "turns": n_turns, "prompt": prompt[:60]}
-    orphans, junk = [], []
+        detail[sid] = {"source": src, "title": title, "turns": n_turns, "prompt": prompt[:60],
+                       "last_ms": last_ms, "native": not sid.startswith("import-")}
+    orphans, junk, picked_ids = [], [], []
     for sid, d in detail.items():
+        is_import = sid.startswith("import-")
+        if picked:
+            hay = (sid + " " + d["title"]).lower()
+            if any(w.lower() in hay for w in picked):
+                d["reason"] = "人工点名（--session 匹配 id/标题）"
+                picked_ids.append(sid)
+                continue
+        if cutoff_ms and (d["last_ms"] or 0) >= cutoff_ms:
+            continue  # 太新：孤儿/垃圾类别按天数让行
+        if not is_import:
+            continue  # 原生会话只经点名删除
         alive = (sources or {}).get(d["source"])
         if alive is not None and sid.replace("import-", "", 1) not in alive:
             d["reason"] = "孤儿（源会话已删除）"
@@ -452,19 +475,26 @@ def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None) -> dic
         elif _is_junk(d["title"], d["prompt"], d["turns"]):
             d["reason"] = "打招呼/冒烟测试会话"
             junk.append(sid)
-    return {"orphans": orphans, "junk": junk, "detail": detail, "paths": paths}
+    return {"orphans": orphans, "junk": junk, "picked": picked_ids, "detail": detail, "paths": paths}
 
 
-def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_running: bool = False) -> dict:
-    """执行清理：会话目录移入回收站 + 清 workspace.json/projcache 引用（均先备份）。"""
+def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_running: bool = False,
+                do_picked: bool = False, hard: bool = False) -> dict:
+    """执行清理：默认移入回收站（可恢复）；hard=True 直接删除目录（仅留 manifest 审计行）。
+
+    两种模式都登记墓碑（import-* 的源 id）：防止下次 to-dsh 把已删会话又导回来。
+    引用清理（workspace.json/projcache/归档列表）两模式相同。
+    """
     import shutil as _shutil
     import time as _time
 
     if dsh_running:
         raise RuntimeError("检测到 dsh 正在运行：prune 需在 dsh 完全退出后执行")
-    targets = list(plan["orphans"] if do_orphans else []) + list(plan["junk"] if do_junk else [])
+    targets = (list(plan["orphans"]) if do_orphans else []) \
+        + (list(plan["junk"]) if do_junk else []) \
+        + (list(plan.get("picked") or []) if do_picked else [])
     if not targets:
-        return {"moved": 0}
+        return {"moved": 0} if not hard else {"deleted": 0}
     # 墓碑登记：本次删除的源 id 永久拦截至 .agentsync-deleted.json（--force 可强导）
     tp = tombstone_path(dsh_root)
     tomb = load_tombstones(dsh_root)
@@ -474,18 +504,32 @@ def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_
     json.dump(sorted(tomb), open(tp, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
     trash = os.path.normpath(os.path.join(str(dsh_root), "..", "..", ".trash-dsh"))
     os.makedirs(trash, exist_ok=True)
-    with open(os.path.join(trash, "manifest.jsonl"), "a", encoding="utf-8") as manifest:
+    if hard:
+        # 直接删除：不留会话数据，只追加审计行（谁删的、删了什么、何时）
+        deleted = 0
+        with open(os.path.join(trash, "manifest-deleted.jsonl"), "a", encoding="utf-8") as manifest:
+            for sid in targets:
+                session_dir = os.path.dirname(plan["paths"][sid])
+                _shutil.rmtree(session_dir)
+                manifest.write(json.dumps(
+                    {"id": sid, **plan["detail"][sid], "deletedAt": _time.strftime("%Y-%m-%dT%H:%M:%S"),
+                     "from": session_dir, "hard": True}, ensure_ascii=False) + chr(10))
+                deleted += 1
         moved = 0
-        for sid in targets:
-            session_dir = os.path.dirname(plan["paths"][sid])
-            dest = os.path.join(trash, sid)
-            if os.path.exists(dest):
-                dest = dest + "-" + _time.strftime("%H%M%S")
-            _shutil.move(session_dir, dest)
-            manifest.write(json.dumps(
-                {"id": sid, **plan["detail"][sid], "movedAt": _time.strftime("%Y-%m-%dT%H:%M:%S"),
-                 "from": session_dir}, ensure_ascii=False) + chr(10))
-            moved += 1
+    else:
+        with open(os.path.join(trash, "manifest.jsonl"), "a", encoding="utf-8") as manifest:
+            moved = 0
+            for sid in targets:
+                session_dir = os.path.dirname(plan["paths"][sid])
+                dest = os.path.join(trash, sid)
+                if os.path.exists(dest):
+                    dest = dest + "-" + _time.strftime("%H%M%S")
+                _shutil.move(session_dir, dest)
+                manifest.write(json.dumps(
+                    {"id": sid, **plan["detail"][sid], "movedAt": _time.strftime("%Y-%m-%dT%H:%M:%S"),
+                     "from": session_dir}, ensure_ascii=False) + chr(10))
+                moved += 1
+        deleted = 0
 
     # 清引用：workspace.json 的 sessionIds + archivedSessionIds + projcache 条目
     for store_file, kind in (("workspace.json", "ws"), ("session_projcache.json", "pc")):
@@ -521,7 +565,12 @@ def apply_prune(dsh_root: str, plan: dict, do_orphans: bool, do_junk: bool, dsh_
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=1)
             os.replace(tmp, sp)
-    return {"moved": moved, "trash": trash}
+    res: dict = {"trash": trash}
+    if moved:
+        res["moved"] = moved
+    if deleted:
+        res["deleted"] = deleted
+    return res
 
 
 # ── 工作区挂载（分组）───────────────────────────────────────────────────

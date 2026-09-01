@@ -31,7 +31,11 @@ h2:first-child{margin-top:0}
 .dim{color:var(--dim)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:86px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:86px;
+  transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}
+.card:hover{border-color:var(--accent)}
+.card.click{cursor:pointer}
+.card.click:hover{transform:translateY(-1px);box-shadow:0 3px 12px rgba(0,0,0,.4)}
 .card .src{display:flex;align-items:center;gap:8px;font-weight:700}
 .card .src .sw{width:10px;height:10px;border-radius:3px;flex:none}
 .card .path{font-size:11px;color:var(--dim);margin-top:6px;word-break:break-all}
@@ -142,12 +146,19 @@ async function renderOverview(){
   /* 源卡：先画健康，再并行补会话数 */
   const cards = document.getElementById("srcCards");
   cards.innerHTML = ov.sources.map(s =>
-    '<div class="card" id="card-'+s.name+'">'
+    '<div class="card click" id="card-'+s.name+'" data-src="'+s.name+'" title="点击查看该源会话列表">'
     + '<div class="src"><span class="dot '+(s.ok?"on":"off")+'"></span>'
     + '<span class="sw" style="background:'+COLORS[s.name]+'"></span>'+esc(SRC_CN[s.name]||s.name)+'</div>'
     + '<div class="path">'+esc(s.path||"未找到")+'</div>'
-    + '<div class="stat">…</div></div>').join("");
-  document.querySelectorAll(".card .stat").forEach(el => el.textContent = "统计加载中…");
+    + '<div class="stat">…</div>'
+    + (s.trash ? '<div class="kv">🗑 回收站 <b>'+s.trash+'</b> 条'+(s.name==="dsh"?"（prune 移入）":"（已排除同步）")+'</div>' : "")
+    + '</div>').join("");
+  cards.querySelectorAll(".card.click").forEach(c => c.onclick = () => {
+    filt.sources = new Set([c.dataset.src]);
+    filt.q = ""; filt.from = ""; filt.to = "";
+    location.hash = "#/sessions";
+  });
+  document.querySelectorAll("#srcCards .stat").forEach(el => el.textContent = "统计加载中…");
 
   const cEl = document.getElementById("cCard");
   if(ov.store){

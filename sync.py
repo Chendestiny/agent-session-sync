@@ -678,6 +678,37 @@ def cmd_selftest(args):
     check(oc[0].updated_at == 1787000009000 and oc[0].cwd == "D:/oc" and oc[0].model == "gpt-test",
           "opencode：updated_at / cwd / model")
 
+    # zcode：归档（time_archived）必须被排除——回收站不同步铁律
+    zc_db = os.path.join(box, "zcode.db")
+    con = sqlite3.connect(zc_db)
+    con.executescript(
+        "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT, directory TEXT, title TEXT,"
+        " time_created INTEGER, time_updated INTEGER, time_archived INTEGER);"
+        "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, sequence INTEGER,"
+        " time_created INTEGER, data TEXT);"
+        "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, sequence INTEGER, data TEXT);"
+    )
+    for sfx, arch in (("alive", None), ("arch", 1787000000000)):
+        sid = f"ses_zc_{sfx}"
+        con.execute("INSERT INTO session VALUES (?,?,?,?,?,?,?)",
+                    (sid, None, "D:/zc", f"ZC {sfx}", 1787000000000, 1787000009000, arch))
+        con.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                    (f"m_u_{sfx}", sid, 1, 1787000001000,
+                     '{"role":"user","semantics":{"origin":"real_user","kind":"user_prompt"}}'))
+        con.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                    (f"m_a_{sfx}", sid, 2, 1787000002000,
+                     '{"role":"assistant","semantics":{"kind":"assistant_response"}}'))
+        con.execute("INSERT INTO part VALUES (?,?,?,?,?)",
+                    (f"p_u_{sfx}", f"m_u_{sfx}", sid, 1, '{"type":"text","text":"你好 zcode"}'))
+        con.execute("INSERT INTO part VALUES (?,?,?,?,?)",
+                    (f"p_a_{sfx}", f"m_a_{sfx}", sid, 1, '{"type":"text","text":"收到"}'))
+    con.commit()
+    con.close()
+    zc = read_zcode(zc_db)
+    check(len(zc) == 1 and zc[0].source_id == "ses_zc_alive", "zcode：归档会话默认排除（回收站不同步）")
+    zc2 = read_zcode(zc_db, include_archived=True)
+    check(len(zc2) == 2, "zcode：include_archived=True 可含归档（审计/查看用）")
+
     print("== 6/8 反向写入器（codex / claude / hermes 沙箱回路）==")
     from agentsync import claudewrite, codexwrite, hermeswrite
     from agentsync.readers import read_claude, read_codex, read_hermes
@@ -923,6 +954,18 @@ def cmd_selftest(args):
         except urllib.error.HTTPError as e:
             code = e.code
         check(code == 405, "POST 被拒（405：v1 零写端点）")
+
+        # 9.3 prune --hard 端到端：点名删除沙箱导入 → sessions API 立即反映
+        sb_sessions = os.path.join(sandbox_dsh_parent, "sessions")
+        plan_p = dshwrite.plan_prune(sb_sessions, {}, picked=["import-selftest-0001"])
+        check(len(plan_p["picked"]) == 1, "prune：--session 点名命中 1 个")
+        res_p = dshwrite.apply_prune(sb_sessions, plan_p, False, False, do_picked=True, hard=True)
+        check(res_p.get("deleted") == 1, "prune --hard：硬删 1 个目录")
+        check(not os.path.exists(os.path.dirname(plan_p["paths"][plan_p["picked"][0]])),
+              "prune --hard：会话目录确实消失")
+        st, metas2 = get("/api/sessions?source=dsh")
+        check(st == 200 and metas2 == [], "prune --hard 后 sessions API 为空")
+
         httpd.shutdown()
         httpd.server_close()
     finally:
@@ -1017,9 +1060,13 @@ def main():
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
     s.set_defaults(fn=cmd_attach_dsh)
 
-    s = sub.add_parser("prune", help="清理 dsh 中的孤儿导入与打招呼/测试会话（移入回收站，可恢复）")
+    s = sub.add_parser("prune", help="清理 dsh 会话：孤儿/冒烟导入 + --session 点名（默认移回收站，--hard 直接删）")
     s.add_argument("--apply", action="store_true", help="落盘（默认 dry-run）")
-    s.add_argument("--only", default=None, help="只清某类：orphans,junk 逗号分隔（默认两类都清）")
+    s.add_argument("--only", default=None, help="只清某类：orphans,junk,picked 逗号分隔（默认孤儿+垃圾）")
+    s.add_argument("--session", default=None, help="点名删除：id/标题子串（逗号分隔多个）——dsh 瘦身手术刀")
+    s.add_argument("--native", action="store_true", help="允许点名命中原生 dsh 会话（慢：全目录扫描；仅配合 --session）")
+    s.add_argument("--older-than", type=int, default=None, metavar="DAYS", help="孤儿/垃圾只清最后活跃早于 N 天的（点名不受限）")
+    s.add_argument("--hard", action="store_true", help="直接删除会话目录（不进回收站、不可恢复；仍登记墓碑防重导 + manifest 审计）")
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
     s.set_defaults(fn=cmd_prune)
 
@@ -1032,27 +1079,56 @@ def cmd_prune(args):
     if not p.dsh_sessions:
         sys.exit("未找到 dsh sessions 目录")
     root = args.root or str(p.dsh_sessions)
+    picked = [w.strip() for w in (args.session or "").split(",") if w.strip()] or None
     loaded = load_sources(list(confirm.SYNC_SOURCES), p)
     sources = {k: {s.source_id for s in v} for k, v in loaded.items() if v}
-    plan = dshwrite.plan_prune(root, sources)
-    for cat, label in (("orphans", "孤儿（源会话已删除）"), ("junk", "打招呼/冒烟测试")):
+    if picked and args.native:
+        print("（--native：全目录扫描中，大库需等待…）")
+    plan = dshwrite.plan_prune(root, sources, picked=picked, include_native=bool(args.native),
+                               older_than_days=args.older_than)
+    cats = (("orphans", "孤儿（源会话已删除）"), ("junk", "打招呼/冒烟测试"),
+            ("picked", "人工点名（--session）"))
+    if args.only:
+        allowed = {w.strip() for w in args.only.split(",") if w.strip()}
+        cats = tuple(c for c in cats if c[0] in allowed)
+    elif picked:
+        cats = (("picked", "人工点名（--session）"),)  # 手术刀模式：只展示将删除的
+    for cat, label in cats:
         sids = plan[cat]
         print(f"== {label}：{len(sids)} 个 ==")
         for sid in sids[:6]:
             d = plan["detail"][sid]
-            print(f"  [{d['source']:9}] 「{d['title'][:28]}」 {d['turns']}轮")
+            native_mark = "原生!" if d.get("native") else ""
+            print(f"  [{d['source']:9}] 「{d['title'][:28]}」 {d['turns']}轮 {native_mark}")
         if len(sids) > 6:
             print(f"  …（其余 {len(sids)-6} 个略）")
+    if args.older_than:
+        print(f"（--older-than {args.older_than}：孤儿/垃圾仅含最后活跃早于该天数的）")
     if not args.apply:
         print()
-        print("DRY-RUN（--apply 落盘：移入 ~/.trash-dsh 回收站 + 清引用，可恢复；--only orphans,junk 可只清一类）")
+        mode = "直接删除（不可恢复，留 manifest 审计 + 墓碑防重导）" if args.hard else "移入 ~/.trash-dsh 回收站（可恢复）"
+        print(f"DRY-RUN（--apply 落盘：{mode}；--only orphans,junk,picked 可只清一类）")
         return
-    do_orphans = not args.only or "orphans" in args.only
-    do_junk = not args.only or "junk" in args.only
+    if args.only:
+        allowed = {w.strip() for w in args.only.split(",") if w.strip()}
+        do_orphans = "orphans" in allowed
+        do_junk = "junk" in allowed
+        do_picked = bool(picked) and "picked" in allowed
+    elif picked:
+        # 手术刀模式：点名时默认只删点名的（孤儿/垃圾要扫另给 --only）
+        do_orphans = do_junk = False
+        do_picked = True
+    else:
+        do_orphans = do_junk = True
+        do_picked = False
     running = dshwrite.dsh_process_running()
-    res = dshwrite.apply_prune(root, plan, do_orphans, do_junk, dsh_running=running)
+    res = dshwrite.apply_prune(root, plan, do_orphans, do_junk, dsh_running=running,
+                               do_picked=do_picked, hard=bool(args.hard))
     print()
-    print(f"applied: moved {res.get('moved', 0)} sessions -> {res.get('trash', '~/.trash-dsh')} (manifest.jsonl 有明细)")
+    if res.get("deleted"):
+        print(f"applied: 硬删除 {res['deleted']} 个会话目录（{res.get('trash')} 的 manifest-deleted.jsonl 留审计；墓碑已登记防重导）")
+    else:
+        print(f"applied: moved {res.get('moved', 0)} sessions -> {res.get('trash', '~/.trash-dsh')} (manifest.jsonl 有明细)")
 
 
 def cmd_attach_dsh(args):

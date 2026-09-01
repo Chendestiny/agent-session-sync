@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -40,12 +41,47 @@ def _meta(s) -> dict:
     }
 
 
+def _trash_count(name: str, p) -> int | None:
+    """各源回收站/归档计数（轻量 SQL/目录数，不做全量解析）。None=该源无此概念。"""
+    try:
+        if name == "zcode" and p.zcode_db:
+            con = sqlite3.connect(f"file:{str(p.zcode_db).replace(chr(92), '/')}?mode=ro", uri=True)
+            n = con.execute(
+                "SELECT COUNT(*) FROM session WHERE parent_id IS NULL AND time_archived IS NOT NULL"
+            ).fetchone()[0]
+            con.close()
+            return int(n)
+        if name == "hermes" and p.hermes_db:
+            con = sqlite3.connect(f"file:{str(p.hermes_db).replace(chr(92), '/')}?mode=ro", uri=True)
+            n = con.execute("SELECT COUNT(*) FROM sessions WHERE archived=1").fetchone()[0]
+            con.close()
+            return int(n)
+        if name == "workbuddy" and p.workbuddy_home:
+            wdb = os.path.join(str(p.workbuddy_home), "workbuddy.db")
+            con = sqlite3.connect(f"file:{wdb.replace(chr(92), '/')}?mode=ro", uri=True)
+            n = con.execute("SELECT COUNT(*) FROM sessions WHERE deleted_at IS NOT NULL").fetchone()[0]
+            con.close()
+            return int(n)
+        if name == "dsh" and p.dsh_sessions:
+            trash = os.path.normpath(os.path.join(str(p.dsh_sessions), "..", "..", ".trash-dsh"))
+            if os.path.isdir(trash):
+                return sum(1 for d in os.listdir(trash) if os.path.isdir(os.path.join(trash, d)))
+            return 0
+    except Exception:
+        return None
+    return None
+
+
 def api_overview() -> dict:
     p = paths.detect()
     sources = []
     for name in SOURCES:
         root = getattr(p, _ROOT_ATTR[name])
-        sources.append({"name": name, "ok": root is not None, "path": str(root) if root else None})
+        sources.append({
+            "name": name, "ok": root is not None,
+            "path": str(root) if root else None,
+            "trash": _trash_count(name, p) if root is not None else None,
+        })
     res: dict = {"sources": sources}
     if store.store_exists():
         ov = store.overview()
