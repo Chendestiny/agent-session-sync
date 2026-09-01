@@ -22,7 +22,7 @@ Node 22 仅在运行 `tools/verify-dsh-backend.cmd`（dsh 原生后端强校验�
 python sync.py selftest
 ```
 
-它在沙箱（`.selftest/`）里完整跑一遍 dsh 写入→读回→增量→校验、归档渲染，
+它在沙箱（`.selftest/`）里完整跑一遍 dsh 写入→读回→增量→校验、归档渲染、webui 只读端点，
 **不碰任何真实数据**。全绿（`SELFTEST PASSED`）才继续；有 FAIL 就停下排查（见 §6），
 不要带病操作真实数据。
 
@@ -44,6 +44,7 @@ python sync.py attach-dsh --apply                                           # �
 | 任务 | 命令 |
 |---|---|
 | 看各 agent 源概览 | `python sync.py status` |
+| 只读可视化 dashboard（给人看） | `python sync.py serve`（浏览器自动开 127.0.0.1:8321，`--port` 可改；三视图：总览 7 泳道时间轴/会话列表筛选/轮次时间条下钻；零写端点 POST 一律 405、仅绑 127.0.0.1、实时读源无缓存。用户想看会话全景/排查时间分布时起给他；agent 自己分析数据不需要它） |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
 | 反向写入 codex / claude code / hermes / opencode / workbuddy | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy}write.py；zcode 不可写）。**六目标已实测全通**（每家的可见性坑都已固化修复：codex 需登记 state_N.sqlite threads 索引、hermes 需计数列、opencode 需 path 列+对齐默认项目上下文） |
 | 规范库（A→C→B 架构） | `python sync.py pull --source all --scope inc`（各源→~/.session-sync，只读源安全免退出）→ `python sync.py push --target dsh\|codex\|claude\|hermes --source all --scope inc --apply`（C→目标，幂等断点续推，中途换 agent 重跑即续；与直通 to-X 共享幂等 id，混用不重复） |
@@ -90,7 +91,7 @@ cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）
 | `docs/agents/codex.md` | codex 深度规格：rollout JSONL、response_item 映射、subagent 过滤 |
 | `docs/agents/workbuddy.md` | WorkBuddy 深度规格：db+JSONL 双层、读取规则（已实现）、写入配方（未实现） |
 | `examples/` | 示例：真实命令输出转录 + 两条完整转换实例（源→dsh 事件日志 / 源→zcode 数据行） |
-| `agentsync/` | Python 源码（readers 七家读取 / dshwrite 写入+挂载 / confirm 人工确认 / syncstate 增量基准 / model IR / archive / validate；zcodewrite 已废弃保留） |
+| `agentsync/` | Python 源码（readers 七家读取 / dshwrite 写入+挂载 / confirm 人工确认 / syncstate 增量基准 / model IR / archive / validate / store C 库 / webui 只读 dashboard；zcodewrite 已废弃保留） |
 | `tools/` | Node 22 的 dsh 原生后端校验脚本 |
 | `reference/` | 参考仓库（dsh-chat-import 等；agentctxsync 在 `本地克隆的 agentctxsync 仓库`） |
 | `archive/` | Markdown 归档输出目录 |

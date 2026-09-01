@@ -69,4 +69,5 @@
 |---|---|---|
 | 双向同步两边列表污染 | 同一会话两边各一份，续聊即分叉 | 产品决策：单向归一（A→C→B）；目标侧 id=uuid5 幂等，同源重推不重复 |
 | **事件时间压平到会话创建时间** | 跨多天的会话导入后所有事件/轮都标创建日（如 56 轮全显示 08-18），侧栏日期与真实活跃时间不符 | 根因三连：IR 的 Turn 无时间字段 + zcode 读取器没 SELECT time_created + dsh 写入器统一用 createdAt。修复：Turn.time（ms，0=未知回退）+ 七家 reader 传轮开始时间 + 六写入器优先用 turn.time；force 重写即还原真实分布 |
+| **C 库往返丢 Turn.time（压平复发链）** | pull 进 C 再 push 出的会话，轮次时间又退回 fallback（Turn.time 修复只穿了 readers/writers，漏了序列化层） | store.py 的 session_to_dict/from_dict 补 `time` 字段（旧 C 文件缺 key 回退 0）；selftest 9.1 往返断言防回归；webui 的 /api/session 走同一序列化 |
 | 各家 CLI 的运行中写入 | SQLite 内存回写/缓存导致看不见或被覆盖 | to-hermes/to-opencode/to-workbuddy 建议目标应用退出后执行；文件型目标（codex/claude/dsh 会话文件）随时可写 |

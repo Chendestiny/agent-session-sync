@@ -48,6 +48,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 ```bash
 cd "<本目录>"                     # 路径含空格，务必带引号
 python sync.py status                                  # 各 agent 源概览
+python sync.py serve                                   # 只读可视化 dashboard：浏览器自动开 127.0.0.1:8321（给人看的；零写端点）
 python sync.py to-dsh                                  # 交互终端：弹两道确认菜单（来源区→数据量）后 dry-run
 python sync.py to-dsh --source all --scope inc --apply --budget 550000   # 参数即确认（agent/脚本必给两参）
 python sync.py to-dsh --source zcode,workbuddy --scope 7d          # 组合来源 + 最近 7 天
