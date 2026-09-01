@@ -103,6 +103,12 @@ def _resolve_scope(args) -> dict:
     sys.exit(confirm.NONINTERACTIVE_HELP)
 
 
+def cmd_serve(args):
+    from agentsync import webui
+
+    webui.serve(port=args.port, open_browser=not args.no_open)
+
+
 def cmd_status(args):
     p = paths.detect()
     print("== 存储探测 ==")
@@ -876,6 +882,11 @@ def main():
     s = sub.add_parser("status", help="四源存储概览")
     s.add_argument("-v", "--verbose", action="store_true")
     s.set_defaults(fn=cmd_status)
+
+    s = sub.add_parser("serve", help="只读 Web dashboard（127.0.0.1，浏览器可视化 7 家源 + C 库）")
+    s.add_argument("--port", type=int, default=8321, help="监听端口（默认 8321）")
+    s.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    s.set_defaults(fn=cmd_serve)
 
     for sink, fn, root_help in (
         ("to-dsh", cmd_to_dsh, "覆盖 dsh sessions 根目录"),
