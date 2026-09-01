@@ -68,6 +68,8 @@ table{border-collapse:collapse;width:100%;background:var(--panel);
 th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
 th{color:var(--dim);font-weight:600;background:var(--panel2);position:sticky;top:0}
 tr.row{cursor:pointer} tr.row:hover{background:var(--panel2)}
+tr.row.trashed{opacity:.45}
+tr.row.trashed td:nth-child(2){text-decoration:line-through;text-decoration-color:#6b7280}
 .badge{display:inline-block;border-radius:4px;padding:0 8px;font-size:11px;
   color:#0f1115;font-weight:700}
 /* 详情 */
@@ -217,8 +219,8 @@ function renderTimeline(all){
     for(const m of ms){
       const l = x(m.span_first||m.created_at||t0);
       const w = Math.max((Math.max(m.span_last||0, m.updated_at||0) - (m.span_first||m.created_at||t0)) / dom * 100, .4);
-      const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
-      bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+COLORS[src]+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
+      const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+(m.trashed?" · 🗑回收站":"")+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
+      bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+(m.trashed?"#4b5563":COLORS[src])+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
     }
     html += '<div class="lane"><div class="lb">'+esc(SRC_CN[src]||src)+" "+(all[src]?all[src].length:0)+'</div><div class="track">'+bars+"</div></div>";
   }
@@ -247,7 +249,7 @@ function drawFilterBar(){
     + '<input type="date" id="fTo" value="'+esc(filt.to)+'" title="创建 ≤">'
     + ' <input type="text" id="fQ" placeholder="标题 / id 关键词" value="'+esc(filt.q)+'">'
     + ' <button class="chip on" id="fGo">筛选</button>'
-    + ' <span class="hint">共 <b id="fN">0</b> 条</span>';
+    + ' <span class="hint">共 <b id="fN">0</b> 条<span id="fT"></span></span>';
   bar.querySelectorAll(".chip[data-s]").forEach(c => c.onclick = () => {
     const s = c.dataset.s;
     filt.sources.has(s) ? filt.sources.delete(s) : filt.sources.add(s);
@@ -273,13 +275,15 @@ function drawTable(){
     && (!toMs || m.created_at <= toMs)
     && (!ql || (m.title||"").toLowerCase().includes(ql) || (m.id||"").toLowerCase().includes(ql)));
   rows.sort((a,b) => b.updated_at - a.updated_at);
+  const nTrashed = rows.filter(m => m.trashed).length;
   const nEl = document.getElementById("fN"); if(nEl) nEl.textContent = rows.length;
+  const tEl = document.getElementById("fT"); if(tEl) tEl.textContent = nTrashed ? "（含回收站 "+nTrashed+" 条，已排除同步）" : "";
   if(!rows.length){ box.innerHTML = '<div class="hint">该筛选下无会话</div>'; return; }
   box.innerHTML = '<table><thead><tr><th>源</th><th>标题</th><th>创建时间</th><th>最后活动</th>'
     + '<th>轮数</th><th>消息</th><th>工具调用</th></tr></thead><tbody>'
     + rows.map(m =>
-      '<tr class="row" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
-      + "<td>"+badge(m.source)+"</td>"
+      '<tr class="row'+(m.trashed?" trashed":"")+'" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
+      + "<td>"+(m.trashed?'<span class="badge" style="background:#6b7280" title="源侧已归档/删除，已排除同步">🗑</span> ':"")+badge(m.source)+"</td>"
       + "<td>"+esc((m.title||"(无标题)").slice(0,60))+"</td>"
       + "<td>"+fmt(m.created_at)+"</td><td>"+fmt(m.updated_at)+"</td>"
       + "<td>"+m.turns+"</td><td>"+m.messages+"</td><td>"+m.tools+"</td></tr>").join("")

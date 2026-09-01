@@ -103,14 +103,57 @@ def api_overview() -> dict:
     return res
 
 
+def _hidden_ids(source: str, p) -> set[str]:
+    """该源「回收站/归档」会话 id 集合（dashboard 展示标记用；同步路径已在 reader 层排除）。"""
+    try:
+        if source == "zcode" and p.zcode_db:
+            ids = readers._zcode_hidden_ids(readers._zcode_tasks_index_path(p.zcode_db))
+            con = sqlite3.connect(f"file:{str(p.zcode_db).replace(chr(92), '/')}?mode=ro", uri=True)
+            ids |= {r[0] for r in con.execute("SELECT id FROM session WHERE time_archived IS NOT NULL")}
+            con.close()
+            return ids
+        if source == "hermes" and p.hermes_db:
+            con = sqlite3.connect(f"file:{str(p.hermes_db).replace(chr(92), '/')}?mode=ro", uri=True)
+            ids = {r[0] for r in con.execute("SELECT id FROM sessions WHERE archived=1")}
+            con.close()
+            return ids
+        if source == "workbuddy" and p.workbuddy_home:
+            wdb = os.path.join(str(p.workbuddy_home), "workbuddy.db")
+            con = sqlite3.connect(f"file:{wdb.replace(chr(92), '/')}?mode=ro", uri=True)
+            ids = {r[0] for r in con.execute("SELECT id FROM sessions WHERE deleted_at IS NOT NULL")}
+            con.close()
+            return ids
+        if source == "dsh" and p.dsh_sessions:
+            sp = os.path.normpath(os.path.join(str(p.dsh_sessions), "..", "storages", "workspace.json"))
+            data = json.load(open(sp, encoding="utf-8"))
+            arch = data.get("global", {}).get("archivedSessionIds")
+            return set(arch) if isinstance(arch, list) else set()
+    except Exception:
+        return set()
+    return set()
+
+
 def api_sessions(source: str, q: str = "", t_from: int = 0, t_to: int = 0) -> list[dict]:
     if source not in SOURCES:
         raise ValueError(f"unknown source: {source}")
     p = paths.detect()
     if getattr(p, _ROOT_ATTR[source]) is None:
         return []
-    sessions = readers.load_sources([source], p).get(source, [])
-    metas = [_meta(s) for s in sessions]
+    # 展示口径含回收站/归档（trashed 标记）；同步口径的排除发生在 reader 层
+    if source == "zcode" and p.zcode_db:
+        sessions = readers.read_zcode(p.zcode_db, include_archived=True)
+    elif source == "hermes" and p.hermes_db:
+        sessions = readers.read_hermes(p.hermes_db, include_archived=True)
+    elif source == "workbuddy" and p.workbuddy_home:
+        sessions = readers.read_workbuddy(p.workbuddy_home, include_deleted=True)
+    else:
+        sessions = readers.load_sources([source], p).get(source, [])
+    hidden = _hidden_ids(source, p)
+    metas = []
+    for s in sessions:
+        m = _meta(s)
+        m["trashed"] = s.source_id in hidden
+        metas.append(m)
     if q:
         ql = q.lower()
         metas = [m for m in metas if ql in (m["title"] or "").lower() or ql in (m["id"] or "").lower()]

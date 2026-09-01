@@ -954,6 +954,7 @@ def cmd_selftest(args):
         check(st == 200 and names == set(webui.SOURCES), "overview 七源卡齐全")
         st, metas = get("/api/sessions?source=dsh")
         check(st == 200 and any(m["id"].startswith("import-") for m in metas), "sessions 读到沙箱导入会话")
+        check(all("trashed" in m for m in metas), "sessions 含回收站标记字段（trashed）")
         sid = next((m["id"] for m in metas if m["id"].startswith("import-")), "")
         st, detail = get("/api/session?source=dsh&id=" + urllib.parse.quote(sid))
         tt = (detail or {}).get("turns") or []
@@ -1077,6 +1078,7 @@ def main():
     s.add_argument("--session", default=None, help="点名删除：id/标题子串（逗号分隔多个）——dsh 瘦身手术刀")
     s.add_argument("--native", action="store_true", help="允许点名命中原生 dsh 会话（慢：全目录扫描；仅配合 --session）")
     s.add_argument("--older-than", type=int, default=None, metavar="DAYS", help="孤儿/垃圾只清最后活跃早于 N 天的（点名不受限）")
+    s.add_argument("--pick", action="store_true", help="交互手术刀：列出全部 dsh 会话（可关键词过滤）编号勾选删除——配合 --hard 彻底删（需退出 dsh）")
     s.add_argument("--hard", action="store_true", help="直接删除会话目录（不进回收站、不可恢复；仍登记墓碑防重导 + manifest 审计）")
     s.add_argument("--root", default=None, help="覆盖 dsh sessions 根目录（测试用）")
     s.set_defaults(fn=cmd_prune)
@@ -1085,11 +1087,72 @@ def main():
     ns.fn(ns)
 
 
+def _prune_pick(root: str, hard: bool) -> None:
+    """交互手术刀：列出全部 dsh 会话（可关键词过滤）→ 编号勾选 → y/N → 删除。
+
+    --pick 面向「dsh 瘦身」：浏览 629+ 条、挑一批、一次删净。dsh 需退出后才能执行删除。
+    """
+    if not confirm.interactive():
+        sys.exit("--pick 需要交互终端（非交互场景用 --session <子串> 点名）")
+    print("读取 dsh 会话中…")
+    pool = readers.read_dsh(root)
+    pool.sort(key=lambda s: (s.updated_at or s.created_at or 0), reverse=True)
+    print(f"共 {len(pool)} 条会话（最后活动倒序）")
+    while True:
+        kw = input("过滤关键词（标题/ID 子串，回车=全部列出）: ").strip().lower()
+        shown = [s for s in pool if not kw or kw in (s.title or "").lower() or kw in s.source_id.lower()]
+        print(f"\n── 匹配 {len(shown)} 条 " + "─" * 40)
+        for i, s in enumerate(shown, 1):
+            tag = "导入" if s.source_id.startswith("import-") else "原生"
+            t = s.title or (s.turns[0].prompt[:24] if s.turns else "")
+            when = datetime.fromtimestamp((s.created_at or 0) / 1000).strftime("%m-%d %H:%M") if s.created_at else "-"
+            print(f"  {i:>3}) {when} [{tag}] {len(s.turns):>3}轮 「{t[:38]}」")
+        ans = input("选择要删除的编号（1,3-5,8 / 回车=重新过滤 / q 取消）: ").strip()
+        if ans.lower() in ("q", "quit", "退出"):
+            sys.exit("已取消：未做任何修改。")
+        if not ans:
+            continue
+        idxs = confirm.parse_pick_answer(ans, len(shown))
+        if idxs is None:
+            print("（此处回车=all 不适用——瘦身请给具体编号；直接回车则是重新过滤）")
+            continue
+        chosen = [shown[i] for i in idxs]
+        print(f"\n将{'💥 彻底删除（不可恢复）' if hard else '移入回收站（可恢复）'} {len(chosen)} 个：")
+        for s in chosen:
+            tag = "导入" if s.source_id.startswith("import-") else "原生"
+            print(f"   [{tag}] 「{(s.title or s.source_id)[:44]}」")
+        yn = input("确认执行？(y/N): ").strip().lower()
+        if yn not in ("y", "yes"):
+            sys.exit("已取消：未做任何修改。")
+        running = dshwrite.dsh_process_running()
+        plan = {
+            "paths": {s.source_id: s.source_path for s in chosen},
+            "detail": {s.source_id: {"source": "?" if s.source_id.startswith("import-") else "dsh",
+                                     "title": s.title or "", "turns": len(s.turns), "prompt": "",
+                                     "last_ms": s.updated_at or 0,
+                                     "native": not s.source_id.startswith("import-")}
+                       for s in chosen},
+            "orphans": [], "junk": [], "picked": [s.source_id for s in chosen],
+        }
+        res = dshwrite.apply_prune(root, plan, False, False, dsh_running=running,
+                                   do_picked=True, hard=hard)
+        if res.get("deleted"):
+            print(f"✅ 已彻底删除 {res['deleted']} 个（manifest-deleted.jsonl 留审计；导入会话墓碑已登记防重导）")
+        else:
+            print(f"✅ 已移入回收站 {res.get('moved', 0)} 个（manifest.jsonl 有明细）")
+        return
+
+
 def cmd_prune(args):
     p = paths.detect()
     if not p.dsh_sessions:
         sys.exit("未找到 dsh sessions 目录")
     root = args.root or str(p.dsh_sessions)
+
+    if getattr(args, "pick", False):
+        _prune_pick(root, hard=bool(args.hard))
+        return
+
     picked = [w.strip() for w in (args.session or "").split(",") if w.strip()] or None
     loaded = load_sources(list(confirm.SYNC_SOURCES), p)
     sources = {k: {s.source_id for s in v} for k, v in loaded.items() if v}
