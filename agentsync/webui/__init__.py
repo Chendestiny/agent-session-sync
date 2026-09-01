@@ -38,6 +38,7 @@ def _meta(s) -> dict:
         "span_first": min(times) if times else created,
         "span_last": max(times) if times else last,
         "path": s.source_path,
+        "subagent": bool(getattr(s, "subagent", False)),
     }
 
 
@@ -146,6 +147,8 @@ def api_sessions(source: str, q: str = "", t_from: int = 0, t_to: int = 0) -> li
         sessions = readers.read_hermes(p.hermes_db, include_archived=True)
     elif source == "workbuddy" and p.workbuddy_home:
         sessions = readers.read_workbuddy(p.workbuddy_home, include_deleted=True)
+    elif source == "dsh" and p.dsh_sessions:
+        sessions = readers.read_dsh(str(p.dsh_sessions), include_subagents=True)
     else:
         sessions = readers.load_sources([source], p).get(source, [])
     hidden = _hidden_ids(source, p)

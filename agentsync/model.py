@@ -100,6 +100,7 @@ class Session:
     summary: str | None = None     # 源侧压缩摘要（zcode compaction）
     turns: list[Turn] = field(default_factory=list)
     source_path: str | None = None
+    subagent: bool = False          # 子代理会话（dsh origin=subagent；同步默认排除，对齐 zcode/codex）
 
     @property
     def message_count(self) -> int:

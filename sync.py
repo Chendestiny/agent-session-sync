@@ -131,7 +131,8 @@ def cmd_status(args):
             continue
         newest = max(ss, key=lambda s: s.created_at or 0)
         label = (newest.title or (newest.turns[0].prompt[:30] if newest.turns else ""))[:30]
-        print(f"  {src:7}: {len(ss):3} 个会话，最近：{_fmt_ts(newest.created_at)} 「{label}」")
+        extra = "（已排除🤖子代理）" if src == "dsh" else ""
+        print(f"  {src:7}: {len(ss):3} 个会话{extra}，最近：{_fmt_ts(newest.created_at)} 「{label}」")
     # 已导入到 dsh 的会话
     if p.dsh_sessions:
         imported = [s for s in loaded.get("dsh", []) if s.source_id.startswith("import-")]
@@ -977,6 +978,33 @@ def cmd_selftest(args):
               "prune --hard：会话目录确实消失")
         st, metas2 = get("/api/sessions?source=dsh")
         check(st == 200 and metas2 == [], "prune --hard 后 sessions API 为空")
+
+        # 9.4 子代理会话：默认排除同步、展示口径标记
+        sub_dir = os.path.join(sb_sessions, "--sandbox--", "session-subagent-0001")
+        os.makedirs(sub_dir, exist_ok=True)
+        sub_lines = [
+            {"type": "session", "id": "session-subagent-0001", "createdAt": base_ms,
+             "cwd": "C:\\t", "origin": "subagent", "parentSession": "session-parent-1"},
+            {"type": "turn/start", "time": base_ms, "seq": 0},
+            {"type": "user/message", "time": base_ms, "seq": 1,
+             "data": {"source": {"kind": "user"}, "content": [{"type": "text", "text": "子代理问题"}]}},
+            {"type": "assistant/message", "time": base_ms + 1000, "seq": 2,
+             "data": {"message": {"source": {"model": "m"}, "content": [{"type": "text", "text": "子代理回答"}]}}},
+        ]
+        with open(os.path.join(sub_dir, "session.jsonl"), "w", encoding="utf-8") as f:
+            for ln in sub_lines:
+                f.write(json.dumps(ln, ensure_ascii=False) + "\n")
+        default_read = read_dsh(sb_sessions)
+        check(not any(s.source_id == "session-subagent-0001" for s in default_read),
+              "read_dsh 默认排除 origin=subagent")
+        full_read = read_dsh(sb_sessions, include_subagents=True)
+        sub_sess = next((s for s in full_read if s.source_id == "session-subagent-0001"), None)
+        check(bool(sub_sess and sub_sess.subagent and sub_sess.turns),
+              "read_dsh include_subagents=True 收子代理并带标记")
+        st, metas3 = get("/api/sessions?source=dsh")
+        sub_meta = next((m for m in metas3 if m["id"] == "session-subagent-0001"), None)
+        check(st == 200 and sub_meta is not None and sub_meta.get("subagent") is True,
+              "webui 展示口径含子代理且带 subagent 标记")
 
         httpd.shutdown()
         httpd.server_close()

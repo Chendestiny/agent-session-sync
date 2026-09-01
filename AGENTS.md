@@ -68,6 +68,9 @@ python sync.py attach-dsh --apply                                           # �
 导入会话按源工作区自动落分区。落盘后可见性：dsh 需 attach + 重启。
 预期留在 dsh「未分组」的：源会话无 cwd（hermes 旧库）、cwd 目录已删除、临时目录、
 cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）。
+**子代理会话默认排除**：dsh 每次 agent 委派各落一个会话目录（header `origin=subagent`，
+侧栏隐藏但磁盘全在）——read_dsh 默认不返回它们（对齐 zcode parent_id / codex 过滤口径），
+审计全量用 `read_dsh(root, include_subagents=True)` 或 webui 展示口径（🤖 徽章）。
 
 ## 3. 安全铁律
 

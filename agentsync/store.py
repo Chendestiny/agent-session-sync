@@ -52,6 +52,7 @@ def session_to_dict(s: Session) -> dict:
         "system_prompt": s.system_prompt,
         "summary": s.summary,
         "source_path": s.source_path,
+        "subagent": s.subagent,
         "turns": [
             {
                 "prompt": t.prompt,
@@ -103,6 +104,7 @@ def session_from_dict(d: dict) -> Session:
         summary=d.get("summary"),
         turns=turns,
         source_path=d.get("source_path"),
+        subagent=bool(d.get("subagent")),
     )
 
 

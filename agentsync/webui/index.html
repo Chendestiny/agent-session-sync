@@ -70,6 +70,8 @@ th{color:var(--dim);font-weight:600;background:var(--panel2);position:sticky;top
 tr.row{cursor:pointer} tr.row:hover{background:var(--panel2)}
 tr.row.trashed{opacity:.45}
 tr.row.trashed td:nth-child(2){text-decoration:line-through;text-decoration-color:#6b7280}
+tr.row.subrow{opacity:.55}
+tr.row.subrow td:nth-child(2){color:var(--dim)}
 .badge{display:inline-block;border-radius:4px;padding:0 8px;font-size:11px;
   color:#0f1115;font-weight:700}
 /* 详情 */
@@ -186,8 +188,15 @@ async function renderOverview(){
       metasCache[src] = ms; all[src] = ms;
       if(card){
         const last = ms[0];
-        card.querySelector(".stat").innerHTML =
-          '<b>'+ms.length+'</b> 个会话'+(last?' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」":"");
+        let stat;
+        if(src === "dsh"){
+          const im = ms.filter(m => String(m.id).startsWith("import-")).length;
+          const sub = ms.filter(m => m.subagent).length;
+          stat = '<b>'+ms.length+'</b> = 导入 '+im+' + 原生 '+(ms.length-im-sub)+' + 🤖子代理 '+sub+'（子代理默认不同步）';
+        }else{
+          stat = '<b>'+ms.length+'</b> 个会话'+(last?' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」":"");
+        }
+        card.querySelector(".stat").innerHTML = stat;
       }
     }catch(e){
       if(card) card.querySelector(".stat").innerHTML = '<span class="err">'+esc(e.message)+"</span>";
@@ -219,8 +228,8 @@ function renderTimeline(all){
     for(const m of ms){
       const l = x(m.span_first||m.created_at||t0);
       const w = Math.max((Math.max(m.span_last||0, m.updated_at||0) - (m.span_first||m.created_at||t0)) / dom * 100, .4);
-      const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+(m.trashed?" · 🗑回收站":"")+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
-      bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+(m.trashed?"#4b5563":COLORS[src])+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
+      const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+(m.trashed?" · 🗑回收站":"")+(m.subagent?" · 🤖子代理":"")+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
+      bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+(m.trashed?"#4b5563":COLORS[src])+';opacity:'+(m.subagent?".35":".85")+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
     }
     html += '<div class="lane"><div class="lb">'+esc(SRC_CN[src]||src)+" "+(all[src]?all[src].length:0)+'</div><div class="track">'+bars+"</div></div>";
   }
@@ -229,7 +238,7 @@ function renderTimeline(all){
 }
 
 /* ── 视图：会话列表 ───────────────────────────────── */
-const filt = { sources:new Set(SOURCES), q:"", from:"", to:"" };
+const filt = { sources:new Set(SOURCES), q:"", from:"", to:"", hideSub:true };
 async function renderSessions(){
   app.innerHTML = '<h2>会话列表</h2><div class="filters" id="fbar"></div><div id="ltable">'
     + '<div class="hint">加载中…</div></div>';
@@ -243,8 +252,10 @@ async function renderSessions(){
 }
 function drawFilterBar(){
   const bar = document.getElementById("fbar");
+  const nSub = Object.values(metasCache).flat().filter(m => m.subagent).length;
   bar.innerHTML = SOURCES.map(s =>
     '<span class="chip'+(filt.sources.has(s)?" on":"")+'" data-s="'+s+'" style="'+(filt.sources.has(s)?"color:"+COLORS[s]+" !important;border-color:"+COLORS[s]:"")+'">'+esc(SRC_CN[s]||s)+"</span>").join("")
+    + ' <span class="chip'+(filt.hideSub?"":" on")+'" id="fSub" title="origin=subagent 的委派会话（dsh 每次子代理委派各落一个目录，侧栏默认隐藏；同步默认排除）">🤖 子代理'+(nSub?"×"+nSub:"")+(filt.hideSub?"（隐藏）":"")+'</span>'
     + ' <input type="date" id="fFrom" value="'+esc(filt.from)+'" title="最后活跃 ≥"> ~ '
     + '<input type="date" id="fTo" value="'+esc(filt.to)+'" title="创建 ≤">'
     + ' <input type="text" id="fQ" placeholder="标题 / id 关键词" value="'+esc(filt.q)+'">'
@@ -255,6 +266,8 @@ function drawFilterBar(){
     filt.sources.has(s) ? filt.sources.delete(s) : filt.sources.add(s);
     drawFilterBar(); drawTable();
   });
+  const subChip = document.getElementById("fSub");
+  if(subChip) subChip.onclick = () => { filt.hideSub = !filt.hideSub; drawFilterBar(); drawTable(); };
   document.getElementById("fGo").onclick = () => {
     filt.from = document.getElementById("fFrom").value;
     filt.to = document.getElementById("fTo").value;
@@ -271,6 +284,7 @@ function drawTable(){
   let rows = Object.entries(metasCache).flatMap(([src, ms]) => ms.map(m => ({...m, source:src})));
   rows = rows.filter(m =>
     filt.sources.has(m.source)
+    && !(filt.hideSub && m.subagent)
     && (!fromMs || m.updated_at >= fromMs)
     && (!toMs || m.created_at <= toMs)
     && (!ql || (m.title||"").toLowerCase().includes(ql) || (m.id||"").toLowerCase().includes(ql)));
@@ -282,8 +296,8 @@ function drawTable(){
   box.innerHTML = '<table><thead><tr><th>源</th><th>标题</th><th>创建时间</th><th>最后活动</th>'
     + '<th>轮数</th><th>消息</th><th>工具调用</th></tr></thead><tbody>'
     + rows.map(m =>
-      '<tr class="row'+(m.trashed?" trashed":"")+'" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
-      + "<td>"+(m.trashed?'<span class="badge" style="background:#6b7280" title="源侧已归档/删除，已排除同步">🗑</span> ':"")+badge(m.source)+"</td>"
+      '<tr class="row'+(m.trashed?" trashed":"")+(m.subagent?" subrow":"")+'" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
+      + "<td>"+(m.trashed?'<span class="badge" style="background:#6b7280" title="源侧已归档/删除，已排除同步">🗑</span> ':"")+(m.subagent?'<span class="badge" style="background:#8b5cf6" title="origin=subagent 委派会话（默认不同步）">🤖</span> ':"")+badge(m.source)+"</td>"
       + "<td>"+esc((m.title||"(无标题)").slice(0,60))+"</td>"
       + "<td>"+fmt(m.created_at)+"</td><td>"+fmt(m.updated_at)+"</td>"
       + "<td>"+m.turns+"</td><td>"+m.messages+"</td><td>"+m.tools+"</td></tr>").join("")
@@ -305,6 +319,7 @@ async function renderDetail(src, id){
   const tmin = times.length ? Math.min(...times) : 0;
   const tmax = times.length ? Math.max(...times) : 0;
   let html = '<div class="hd">'+badge(d.source)
+    + (d.subagent?' <span class="badge" style="background:#8b5cf6" title="origin=subagent 委派会话（默认不同步）">🤖 子代理</span>':"")
     + '<div class="t">'+esc(d.title||"(无标题)")+"</div>"
     + '<div class="kv">cwd：<b>'+esc(d.cwd||"-")+'</b></div>'
     + '<div class="kv">跨度：<b>'+fmt(d.created_at)+" ~ "+fmt(d.updated_at||tmax)+'</b>'

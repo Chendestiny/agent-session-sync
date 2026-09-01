@@ -452,30 +452,38 @@ def _read_dsh_file(path: str) -> Session | None:
         model=None,
         turns=turns,
         source_path=path,
+        subagent=(header.get("origin") == "subagent"),
     )
 
 
-def read_dsh(sessions_root) -> list[Session]:
+def read_dsh(sessions_root, include_subagents: bool = False) -> list[Session]:
     """读全部 dsh 会话。文件级并行（进程池）：98 万行 JSONL 全量解析 22s → ~5s。
 
     worker 必须是模块级函数（Windows spawn pickle）；主入口无 __main__ 守卫等
     受限环境下自动回退串行，行为不变仅慢。
+    include_subagents=False（默认）：origin=subagent 的子代理会话不返回——每次 agent
+    委派都会单开一个会话目录（侧栏隐藏但磁盘全在），不排除会让对账虚高、外流污染
+    其他目标；True = 审计/展示口径全放出。
     """
     root = str(sessions_root)
     paths = sorted(glob.glob(os.path.join(root, "*", "*", "session.jsonl*")))
     if not paths:
         return []
     workers = min(6, (os.cpu_count() or 4), len(paths))
+    results = None
     if workers > 1:
         try:
             from concurrent.futures import ProcessPoolExecutor
 
             with ProcessPoolExecutor(max_workers=workers) as ex:
                 results = list(ex.map(_read_dsh_file, paths, chunksize=8))
-            return [s for s in results if s is not None]
         except Exception:
-            pass  # 进程池不可用 → 串行兜底
-    return [s for s in map(_read_dsh_file, paths) if s is not None]
+            results = None  # 进程池不可用 → 串行兜底
+    if results is None:
+        results = [s for s in map(_read_dsh_file, paths) if s is not None]
+    if include_subagents:
+        return [s for s in results if s is not None]
+    return [s for s in results if s is not None and not s.subagent]
 
 
 # ── WorkBuddy 读取器（~/.workbuddy[-ai]/：workbuddy.db + projects/<slug>/<id>.jsonl）──
