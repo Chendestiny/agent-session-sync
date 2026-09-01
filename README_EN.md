@@ -55,8 +55,19 @@ tools\verify-dsh-backend.cmd                   # strong check via dsh's own back
 
 ## 🖥️ Read-only Web Dashboard
 
+**Option 1 · global command** (created by the install script — works from any directory,
+just like `hermes` / `dsh web`):
+
 ```bash
-python sync.py serve        # local server + auto-opens the browser (default 127.0.0.1:8321, --port to change, Ctrl+C to stop)
+session-sync serve              # auto-opens the browser at 127.0.0.1:8321 (--port to change, Ctrl+C to stop)
+```
+
+**Option 2 · from source** (no skill install / fresh clone):
+
+```bash
+git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-sync
+pip install zstandard           # the only third-party dep (for reading the dsh source)
+python sync.py serve
 ```
 
 | View | What you see |
@@ -65,9 +76,8 @@ python sync.py serve        # local server + auto-opens the browser (default 127
 | Sessions | filter by source/date/keyword, click a row to drill down |
 | Detail | per-turn time bars (flattened timestamps instantly visible) + turns & tool-call details |
 
-Fully read-only: zero write endpoints (POST → 405), binds 127.0.0.1 only, offline page (no CDN);
-no new dependencies (stdlib HTTP server) — clone, `pip install zstandard` (the only third-party dep,
-used for reading the dsh source), run. Fresh reads on every request, no cache.
+Fully read-only: zero write endpoints (POST → 405), binds 127.0.0.1 only, offline page (no CDN),
+no new dependencies (stdlib HTTP server); fresh reads on every request, no cache.
 
 ## 💬 One Sentence to Any Agent (zero config)
 

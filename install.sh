@@ -94,7 +94,21 @@ for item in SKILL.md AGENTS.md README.md README_EN.md LICENSE \
     [ -e "$src_root/$item" ] && cp -a "$src_root/$item" "$DEST/"
 done
 
-step '3/3' '环境检查 ...'
+step '3/4' '安装全局命令 session-sync ...'
+BIN_DIR="$HOME/.local/bin"
+mkdir -p "$BIN_DIR"
+cat > "$BIN_DIR/session-sync" <<'SHIM'
+#!/bin/sh
+exec python3 "$HOME/.agents/skills/session-sync/sync.py" "$@"
+SHIM
+chmod +x "$BIN_DIR/session-sync"
+case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *) echo "  [!] $BIN_DIR 不在 PATH：请加入 shell 配置（export PATH=\"\$HOME/.local/bin:\$PATH\"）" ;;
+esac
+echo "      任意目录可用：session-sync serve（dashboard）/ session-sync status 等"
+
+step '4/4' '环境检查 ...'
 if [ -n "$PY" ]; then
     "$PY" --version
     "$PY" -c 'import zstandard' 2>/dev/null \
@@ -106,6 +120,7 @@ fi
 echo ''
 echo '安装完成！'
 echo "  目录：$DEST"
+echo '  全局：任意目录 session-sync serve（dashboard）'
 echo '  自检：cd 到该目录后执行 python sync.py selftest'
 echo '  触发：对任意 agent 说「同步会话」或「把 hermes 会话同步到 dsh」'
 echo '  注意：to-zcode 方向已移除（单向设计）；写入前 attach/prune 需退出 dsh'

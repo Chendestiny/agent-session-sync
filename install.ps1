@@ -86,7 +86,23 @@ foreach ($item in $bundle) {
     }
 }
 
-Write-Host '[3/3] Environment check ...'
+Write-Host '[3/4] Install global command: session-sync ...'
+$binDir = Join-Path $HOME '.agents\bin'
+New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+$cmdBody = "@echo off`r`npython `"%USERPROFILE%\.agents\skills\session-sync\sync.py`" %*`r`n"
+[System.IO.File]::WriteAllText((Join-Path $binDir 'session-sync.cmd'), $cmdBody)
+$shBody = "#!/bin/sh`nexec python `"`$HOME/.agents/skills/session-sync/sync.py`" `"`$@`"`n"
+[System.IO.File]::WriteAllText((Join-Path $binDir 'session-sync'), $shBody)
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+$hit = @($userPath -split ';' | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $binDir.TrimEnd('\') })
+if ($hit.Count -eq 0) {
+    $newPath = if ($userPath -and $userPath.Trim()) { $userPath.TrimEnd(';') + ';' + $binDir } else { $binDir }
+    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+    Write-Host "      Added $binDir to user PATH (takes effect in NEW terminals)"
+}
+Write-Host '      Run  session-sync serve  from anywhere (dashboard);  session-sync status  etc. all work'
+
+Write-Host '[4/4] Environment check ...'
 try { python --version | Write-Host } catch { Write-Host '  [!] python not found, please install Python 3.10+' }
 try {
     python -c "import zstandard" 2>$null
@@ -97,6 +113,7 @@ Remove-Item $zip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host 'Install done!'
 Write-Host ("  Location: {0}" -f $dest)
+Write-Host '  Global:   session-sync serve   (dashboard, any directory; new terminals)'
 Write-Host '  Self-test: cd there and run  python sync.py selftest'
 Write-Host '  Trigger: tell any agent "sync sessions to dsh"'
 Write-Host '  Note: to-zcode direction is removed (one-way design); exit dsh before attach/prune'

@@ -46,8 +46,18 @@ Linux / macOS / WSL：
 
 ## 🖥️ 只读可视化（Web Dashboard）
 
+**方式一 · 全局命令**（用 install 脚本装过本工具即有，任意目录随时起，和 `hermes` / `dsh web` 一样）：
+
 ```bash
-python sync.py serve        # 起本地服务并自动开浏览器（默认 127.0.0.1:8321，--port 可改，Ctrl+C 停）
+session-sync serve              # 自动开浏览器 127.0.0.1:8321（--port 可改，Ctrl+C 停）
+```
+
+**方式二 · 从源码跑**（没装 skill / 刚 clone）：
+
+```bash
+git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-sync
+pip install zstandard           # 唯一第三方依赖（读 dsh 源用；其余源纯标准库）
+python sync.py serve
 ```
 
 | 视图 | 看什么 |
@@ -56,8 +66,7 @@ python sync.py serve        # 起本地服务并自动开浏览器（默认 127.
 | 会话列表 | 按源/日期/关键词筛选，点行下钻 |
 | 会话详情 | 轮次时间条（时间戳是否压平一眼可见）+ 轮次与工具调用明细 |
 
-全只读：零写端点（POST 一律 405）、仅绑定 127.0.0.1、页面离线可用（无 CDN）；
-零新依赖（标准库 HTTP 服务），clone 后 `pip install zstandard`（唯一第三方依赖，读 dsh 源用）即可跑；
+全只读：零写端点（POST 一律 405）、仅绑定 127.0.0.1、页面离线可用（无 CDN）、零新依赖（标准库 HTTP 服务）；
 数据实时读源、无缓存。
 
 ## 💬 更多触发语句
