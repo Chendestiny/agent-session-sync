@@ -388,6 +388,7 @@ def apply_title_backfill(plan: dict, dsh_running: bool = False) -> str:
 JUNK_TOKENS = {
     "你好", "hello", "hi", "在吗", "测试", "test", "ping", "冒烟", "smoke",
     "code-ok", "codex-ok", "ok", "正常", "测试模型",
+    "你好鸭", "pong", "wt-ok",
 }
 
 
@@ -395,6 +396,7 @@ def _is_junk(title: str, first_prompt: str, n_turns: int) -> bool:
     """判定纯打招呼/冒烟测试会话：轮次极少且（标题或首问）就是测试词本身。
 
     注意是「等于」而非「包含」——「测试环境注释鉴权」这类真实工作标题不会误伤。
+    reply*/say hello* 开头的固定测试句（claude code 的 sdk 冒烟）按前缀判定。
     """
     if n_turns > 2:
         return False
@@ -402,7 +404,7 @@ def _is_junk(title: str, first_prompt: str, n_turns: int) -> bool:
         t = text.lower()
         if t and (t in JUNK_TOKENS or t.rstrip("!！.。?？") in JUNK_TOKENS):
             return True
-        if t.startswith(("codex-ok", "code-ok", "reply with exactly")):
+        if t.startswith(("codex-ok", "code-ok", "reply with exactly", "reply", "say hello")):
             return True
     return False
 
@@ -427,7 +429,8 @@ def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None) -> dic
         src = marker.get("data", {}).get("tool", "?")
         title_ev = next((e for e in reversed(events) if e.get("type") == "session/title"), None)
         title = (title_ev or {}).get("data", {}).get("title", "")
-        for pref in ("[hermes] ", "[codex] ", "[workbuddy] ", "[zcode] "):
+        for pref in ("[hermes] ", "[codex] ", "[workbuddy] ", "[zcode] ",
+                     "[claude] ", "[opencode] ", "[dsh] "):
             if title.startswith(pref):
                 title = title[len(pref):]
         first_user = next((e for e in events if e.get("type") == "user/message"

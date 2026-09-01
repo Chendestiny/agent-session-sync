@@ -616,6 +616,14 @@ def cmd_selftest(args):
         check(False, "gate：非交互超阈应拒绝")
     except SystemExit:
         check(True, "gate：非交互超阈拒绝（一股脑防线）")
+    from agentsync.dshwrite import _is_junk
+
+    check(_is_junk("Reply PONG", "Reply PONG", 1) and _is_junk("Say hello in one word.", "Say hello in one word.", 1),
+          "junk：claude 冒烟句（reply*/say hello* 前缀）")
+    check(_is_junk("你好鸭", "你好鸭", 1), "junk：你好鸭")
+    check(not _is_junk("微前端基座与子应用UI库冲突迁移Ant Design Vue方案", "微前端…", 56)
+          and not _is_junk("你好，你用了什么模型", "你好，你用了什么模型", 2),
+          "junk：真实会话不误伤（包含≠等于）")
 
     print("== 5/8 claude / opencode 读取器（沙箱样本）==")
     import tempfile
