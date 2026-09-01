@@ -865,6 +865,73 @@ def cmd_selftest(args):
     check(len(back2[0].turns) == 2 and bool(back2[0].turns[1].steps[0].tool_calls), "workbuddy：追加后含工具调用")
     check(workbuddywrite.plan_write(wb_home, fake(v2=True), None)["action"] == "up-to-date", "workbuddy：三次 up-to-date")
 
+    # ── 9. webui（只读 dashboard）───────────────────────────────────────
+    print("\n== 9. webui 只读服务 ==")
+    import threading
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    from agentsync import store as _store
+    from agentsync import webui
+
+    # 9.1 store 往返保住 Turn.time（C 库时间戳修复回归）
+    d = _store.session_to_dict(_store.session_from_dict(
+        {"source": "t", "source_id": "t1", "created_at": 1,
+         "turns": [{"prompt": "p", "time": 1735689600123, "steps": []}]}))
+    check(d["turns"][0].get("time") == 1735689600123, "store 往返保留 Turn.time")
+
+    # 9.2 沙箱起服务（DSH_HOME/SESSION_SYNC_HOME 重定向，不碰真实数据）
+    old_env = {k: os.environ.get(k) for k in ("DSH_HOME", "SESSION_SYNC_HOME")}
+    sandbox_dsh_parent = os.path.join(box, "webui-dsh-home")
+    os.makedirs(sandbox_dsh_parent, exist_ok=True)
+    os.environ["DSH_HOME"] = sandbox_dsh_parent
+    os.environ["SESSION_SYNC_HOME"] = os.path.join(box, "webui-cstore")
+    try:
+        fake_sess = fake(v2=True)
+        base_ms = 1735689600000  # 2025-01-01 00:00 UTC
+        for i, t in enumerate(fake_sess.turns):
+            t.time = base_ms + i * 3600_000
+        plan = dshwrite.plan_write(os.path.join(sandbox_dsh_parent, "sessions"), fake_sess, None)
+        dshwrite.apply_write(plan)
+
+        httpd = webui.make_server(0)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        def get(path: str):
+            with opener.open(httpd.url + path) as r:
+                return r.status, json.loads(r.read().decode("utf-8"))
+
+        with opener.open(httpd.url + "/") as r:
+            home_body = r.read().decode("utf-8")
+            home_st = r.status
+        check(home_st == 200 and "agent-session-sync" in home_body, "GET / 返回页面")
+        st, ov = get("/api/overview")
+        names = {s["name"] for s in ov.get("sources", [])}
+        check(st == 200 and names == set(webui.SOURCES), "overview 七源卡齐全")
+        st, metas = get("/api/sessions?source=dsh")
+        check(st == 200 and any(m["id"].startswith("import-") for m in metas), "sessions 读到沙箱导入会话")
+        sid = next((m["id"] for m in metas if m["id"].startswith("import-")), "")
+        st, detail = get("/api/session?source=dsh&id=" + urllib.parse.quote(sid))
+        tt = (detail or {}).get("turns") or []
+        check(st == 200 and bool(tt) and all(t.get("time") for t in tt), "detail 轮次时间穿透（Turn.time 全链路）")
+        req = urllib.request.Request(httpd.url + "/api/overview", data=b"{}", method="POST")
+        try:
+            opener.open(req)
+            code = 200
+        except urllib.error.HTTPError as e:
+            code = e.code
+        check(code == 405, "POST 被拒（405：v1 零写端点）")
+        httpd.shutdown()
+        httpd.server_close()
+    finally:
+        for k, v in old_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
     if args.keep:
         print(f"\n沙箱保留在：{box}")
     else:
