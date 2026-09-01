@@ -48,28 +48,21 @@ Linux / macOS / WSL：
 同步会话：把各 agent 的会话全量增量导入 dsh，先跑 selftest 和 verify 自检
 ```
 
-### 🐌 GitHub 访问慢 / 不能翻墙？
-
-**办法一：手动下载 zip（最稳，安装过程零联网）**
-
-1. 任何能访问的时刻下载仓库 zip：仓库页 `Code` → `Download ZIP`，
-   或用加速链（镜像站不保证长期可用，任选当时能下载的）：
-   `https://ghfast.top/https://github.com/Chendestiny/agent-session-sync/archive/refs/heads/main.zip`
-2. 解压 zip，进入 `agent-session-sync-main` 目录执行（脚本检测到旁边的 `sync.py` 就地安装，不再联网）：
-   - Windows：`powershell -ExecutionPolicy Bypass -File .\install.ps1`
-   - Linux / macOS / WSL：`bash install.sh`
-3. 也可以完全不用脚本：把解压目录整个复制为 `~/.agents/skills/session-sync`
-   （Windows 即 `%USERPROFILE%\.agents\skills\session-sync`），效果等价。
-
-**办法二：镜像前缀在线装**（脚本支持 `ASS_GH_PREFIX` 环境变量拼在下载地址前；脚本本体仍需能访问 raw.githubusercontent.com，不行就用办法一）
-
-```powershell
-$env:ASS_GH_PREFIX = 'https://ghfast.top/'; irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex
-```
+## 🖥️ 只读可视化（Web Dashboard）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.sh | ASS_GH_PREFIX=https://ghfast.top/ bash
+python sync.py serve        # 起本地服务并自动开浏览器（默认 127.0.0.1:8321，--port 可改，Ctrl+C 停）
 ```
+
+| 视图 | 看什么 |
+|---|---|
+| 总览 | 7 家源健康灯/实时会话数 + C 库水位线 + 7 泳道会话时间轴（位置=创建时间，宽度=跨度） |
+| 会话列表 | 按源/日期/关键词筛选，点行下钻 |
+| 会话详情 | 轮次时间条（时间戳是否压平一眼可见）+ 轮次与工具调用明细 |
+
+全只读：零写端点（POST 一律 405）、仅绑定 127.0.0.1、页面离线可用（无 CDN）；
+零新依赖（标准库 HTTP 服务），clone 后 `pip install zstandard`（唯一第三方依赖，读 dsh 源用）即可跑；
+数据实时读源、无缓存。
 
 ## 💬 更多触发语句
 
@@ -142,22 +135,6 @@ tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校�
 >
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
 > 故障排查 / 升级适配），交给任何 agent 读它即可。
-
-## 🖥️ 只读可视化（Web Dashboard）
-
-```bash
-python sync.py serve        # 起本地服务并自动开浏览器（默认 127.0.0.1:8321，--port 可改，Ctrl+C 停）
-```
-
-| 视图 | 看什么 |
-|---|---|
-| 总览 | 7 家源健康灯/实时会话数 + C 库水位线 + 7 泳道会话时间轴（位置=创建时间，宽度=跨度） |
-| 会话列表 | 按源/日期/关键词筛选，点行下钻 |
-| 会话详情 | 轮次时间条（时间戳是否压平一眼可见）+ 轮次与工具调用明细 |
-
-全只读：零写端点（POST 一律 405）、仅绑定 127.0.0.1、页面离线可用（无 CDN）；
-零新依赖（标准库 HTTP 服务），clone 后 `pip install zstandard`（唯一第三方依赖，读 dsh 源用）即可跑；
-数据实时读源、无缓存。下载 zip 解压的同理，进入目录后两条命令即可。
 
 ## 🧩 作为 skill 使用（整目录即 skill bundle）
 
