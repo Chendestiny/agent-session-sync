@@ -109,4 +109,5 @@ all 或 inc 首跑=历史全量，`--apply` 需交互 y/N 或非交互 `--confir
 - dsh 源默认排除 origin=subagent 子代理会话（每次委派各落一个目录，侧栏隐藏；对齐 zcode/codex
   过滤口径）；dashboard 展示口径含它们并带 🤖 徽章。
 - zcode 永不写入（两连败定论：全量=超上下文黑屏；裁剪版也黑屏且无上下文——v2 注册表
-  协同所致）。要带上下文进 zcode：生成交接摘要 markdown 让用户新会话贴入。
+  协同所致）。要带上下文进 zcode：`archive --source dsh --session <id>` 导出 Markdown
+  让用户贴进新会话（项目级用 local/zcode-交接摘要.md 模式）。

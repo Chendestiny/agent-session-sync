@@ -123,7 +123,7 @@ part(id, message_id, session_id, time_created, time_updated, data, sequence)
 - assistant 一条消息 = 一个 step（text/reasoning/tool 映射；tool 同步产出 call+result 对，
   `state.status ∈ {failed,error}` → isError）。
 
-## 8. 写入方向（已废弃，2026-08-26）
+## 8. 写入方向（已废弃，2026-08-26；2026-09-01 二次实验定论）
 
 曾实现过 IR → zcode 行写入（uuid5 幂等、进程检测、备份、单事务），实测暴露两类问题后
 **整体移除（zcode 只出不进）**：
@@ -131,11 +131,35 @@ part(id, message_id, session_id, time_created, time_updated, data, sequence)
 - 导入会话 time_updated 异常（旧会话显示「1 分钟前」）——客户端对时间字段有额外处理；
 - 部分会话渲染空白——客户端读取行时有本工具未完全复刻的字段/状态依赖。
 
-历史实现保留在 `agentsync/zcodewrite.py`（标注废弃，勿调用）。
-如需清理历史导入会话，**必须清两个库**：
-1. `cli/db.sqlite`：删 part/message/session（识别规则：`sess_` 前缀 + 总长 41 +
-   uuid 版本位（第三段首位）= '5'，uuid5 派生与原生 uuid4 可靠区分）；
-2. `v2/tasks-index.sqlite`：删 `tasks` 表中 `task_id NOT IN (SELECT id FROM session)`
-   的僵尸行——否则 UI 历史列表残留、点开报 `fault.subscribe.sessionNotFound`。
-两库操作前都先备份。2026-08-26 已按此清理（246 会话 + 199 个僵尸 task；
-备份 `db.sqlite.cleanup-bak-*` / `tasks-index.sqlite.cleanup-bak-*`）。
+### 2026-09-01 二次实验（两连败，根因落定）
+
+带着 Turn.time 修复与原生形状对齐（assistant `parentID`→轮内 user 消息、`anchor`=null）重试了两种姿势：
+
+1. **全量追加**（124 轮，估算 163 万 tokens）→ resume 超上下文，压缩卡死、黑屏、会话报废；
+2. **裁剪新建**（trim_turns 87k tokens / 8 轮）→ 仍黑屏，且发消息后模型"重新思考"（历史未进上下文）。
+
+**根因（v2 注册表协同架构）**：zcode 打开会话时的渲染与上下文装配不止读 session/message/part，
+还依赖一排注册表：`session_entry`（runtime 事件/checkpoint）、`session_input`（输入晋升链，
+`promoted_message_id`）、`turn_usage`、`tool_usage`、`input_history`、`model_usage`、
+v2 `tasks-index`。客户端自己的每次写入都会过这排表；外部写入进不了读取路径——
+列表见标题、打开黑屏、上下文为空，三者同源。逆完整套注册表成本极高且随版本升级即碎，
+**定论：外部写 zcode db 通道彻底关闭**。
+
+### 把会话带进 zcode 的正确姿势：交接摘要
+
+上下文靠文档传递，不靠数据库灌注（与 CLAUDE.md/AGENTS.md 同一哲学）：
+
+```bash
+python sync.py archive --source dsh --session <id子串> --apply   # 单会话导出 Markdown
+```
+
+导出的 Markdown（或项目级 `local/zcode-交接摘要.md` 式摘要）贴进 zcode 新会话即可续聊。
+
+### 清理残留（如重蹈覆辙）
+
+**必须清两个库 + 主行**（历史识别规则：`sess_` 前缀 + 总长 41 + uuid 版本位=uuid5 派生）：
+1. `cli/db.sqlite`：按 `session_id` 列扫表清 message/part/session_entry/... 之外，
+   **别忘了 session 表本身（主键是 `id` 不是 `session_id`，按列名扫描会漏）**——漏删主行
+   会留"列表可见、点开黑屏"的空壳；zcode 重开时还会从主行重新注册 tasks-index；
+2. `v2/tasks-index.sqlite`：连 `tasks` 行一起删。
+两库操作前都先备份；zcode 必须完全退出。2026-08-26 曾按旧规则清理（246 会话 + 199 僵尸 task）。

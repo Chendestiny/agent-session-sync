@@ -45,6 +45,7 @@ python sync.py attach-dsh --apply                                           # �
 |---|---|
 | 看各 agent 源概览 | `python sync.py status` |
 | 只读可视化 dashboard（给人看） | `python sync.py serve`（浏览器自动开 127.0.0.1:8321，`--port` 可改；三视图：总览 7 泳道时间轴/会话列表筛选/轮次时间条下钻；零写端点 POST 一律 405、仅绑 127.0.0.1、实时读源无缓存。用户想看会话全景/排查时间分布时起给他；agent 自己分析数据不需要它。install 脚本装过后任意目录可直接 `session-sync serve`） |
+| 把某条会话带进 zcode 续聊（zcode 不可写库） | `python sync.py archive --source dsh --session <id子串> --apply` 导出单会话 Markdown → 用户贴进 zcode 新会话（上下文靠文档传递；项目级用 `local/zcode-交接摘要.md` 模式） |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
 | 反向写入 codex / claude code / hermes / opencode / workbuddy | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy}write.py；zcode 不可写）。**六目标已实测全通**（每家的可见性坑都已固化修复：codex 需登记 state_N.sqlite threads 索引、hermes 需计数列、opencode 需 path 列+对齐默认项目上下文） |
 | 规范库（A→C→B 架构） | `python sync.py pull --source all --scope inc`（各源→~/.session-sync，只读源安全免退出）→ `python sync.py push --target dsh\|codex\|claude\|hermes --source all --scope inc --apply`（C→目标，幂等断点续推，中途换 agent 重跑即续；与直通 to-X 共享幂等 id，混用不重复） |
