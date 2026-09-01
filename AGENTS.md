@@ -74,7 +74,11 @@ cwd 嵌套在已有工作区路径下（dsh 启动会清理这类嵌套记录）
 
 ## 3. 安全铁律
 
-1. **永不写入 zcode 的存储**（to-zcode 方向已移除；`agentsync/zcodewrite.py` 仅作历史参考）。
+1. **zcode 写入仅限「裁剪预算内新建/追加」，全量大会话写入=报废**（2026-09-01 实测：124 轮
+   163 万 tokens 全量追加 → resume 超上下文黑屏、压缩卡死，会话报废；裁剪到 ~100k tokens
+   新建则可续聊）。任何 zcode 写入必须：先估算 tokens、`trim_turns` 裁剪、确认 zcode 完全退出、
+   全库备份；行形状对齐原生（assistant parentID→轮内 user 消息、anchor=null）。
+   `agentsync/zcodewrite.py` 仅作历史参考。
 2. 读取侧永远只读（sqlite `mode=ro`）；写 dsh 只新增 `import-*` 会话目录，不动原生会话。
 3. 改 dsh 的 workspace.json/projcache（attach-dsh）必须在其完全退出后进行。
 3. 对用户报结果时如实说明：写了多少、跳过多少、有无裁剪、哪些步骤被阻塞待用户配合。

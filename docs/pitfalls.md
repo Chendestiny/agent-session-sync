@@ -63,6 +63,7 @@
 | 向 zcode 写入会话 | 时间显示异常（旧会话显示 1 分钟前）、部分会话渲染空白 | **方向整体移除**（zcode 只出不进）；已导入 246 会话已清理（识别规则：sess_+uuid5 版本位=5，备份 db.sqlite.cleanup-bak-*） |
 | 写入每会话备份一次 | 一次导入百余个全量备份（23GB） | 历史教训：改每运行一次；现已随方向移除作废 |
 | **UI「删除」≠ 库里删除（回收站泄漏根因）** | 用户在 zcode 删掉的会话（如「任重道远」）仍被同步到 dsh | 真相（0.16.5 实测）：删除按钮调 RPC `zcode-task.archiveTask`，标记打在 `~/.zcode/v2/tasks-index.sqlite` 的 tasks 表（`archived=1`/`deleted=1`），db.sqlite 的 session/message **完全不动**，`time_archived` 列形同虚设。修复：read_zcode 双机制排除（time_archived + tasks-index 联查，读不到则不排除），include_archived=True 全放出审计；历史已导入的成了孤儿 → prune 清理 |
+| **大会话全量写入 = 超上下文黑屏报废（2026-09-01 实测）** | 124 轮会话（**估算 163 万 tokens**）追加进 zcode 后点开即黑屏；手动压缩卡死、发消息卡在"压缩上下文"、重开仍黑屏——会话报废 | resume 时 zcode 试图全量装载/压缩。正确姿势（已验证）：`trim_turns` 三层裁剪（锚点+尾部+中段摘要，对齐 to-dsh --budget 哲学）→ **新建会话**（87k tokens / 8 轮可续聊），旧会话回滚原状。形状注意（追加/新建都适用）：assistant `parentID` 必须指向轮内 user 消息、assistant `anchor` 必须为 null（对齐原生，旧 zcodewrite 正是栽在这两处） |
 
 ## 跨家通用
 
