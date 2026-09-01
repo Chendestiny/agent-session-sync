@@ -688,7 +688,7 @@ def cmd_selftest(args):
         " time_created INTEGER, data TEXT);"
         "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, sequence INTEGER, data TEXT);"
     )
-    for sfx, arch in (("alive", None), ("arch", 1787000000000)):
+    for sfx, arch in (("alive", None), ("arch", 1787000000000), ("uidel", None)):
         sid = f"ses_zc_{sfx}"
         con.execute("INSERT INTO session VALUES (?,?,?,?,?,?,?)",
                     (sid, None, "D:/zc", f"ZC {sfx}", 1787000000000, 1787000009000, arch))
@@ -704,10 +704,21 @@ def cmd_selftest(args):
                     (f"p_a_{sfx}", f"m_a_{sfx}", sid, 1, '{"type":"text","text":"收到"}'))
     con.commit()
     con.close()
-    zc = read_zcode(zc_db)
-    check(len(zc) == 1 and zc[0].source_id == "ses_zc_alive", "zcode：归档会话默认排除（回收站不同步）")
-    zc2 = read_zcode(zc_db, include_archived=True)
-    check(len(zc2) == 2, "zcode：include_archived=True 可含归档（审计/查看用）")
+    # zcode UI「删除」的真实落点：tasks-index.sqlite 打 archived/deleted 标记（db 不动）
+    ti_db = os.path.join(box, "tasks-index.sqlite")
+    con = sqlite3.connect(ti_db)
+    con.executescript(
+        "CREATE TABLE tasks (task_id TEXT PRIMARY KEY, title TEXT, archived INTEGER, deleted INTEGER);"
+    )
+    con.execute("INSERT INTO tasks VALUES ('ses_zc_uidel', 'ZC uidel', 1, 0)")   # UI 归档
+    con.execute("INSERT INTO tasks VALUES ('ses_zc_gone', 'ZC gone', 1, 1)")     # UI 真删（db 已无此行）
+    con.commit()
+    con.close()
+    zc = read_zcode(zc_db, tasks_index=ti_db)
+    check(len(zc) == 1 and zc[0].source_id == "ses_zc_alive",
+          "zcode：归档双机制排除（time_archived + tasks-index 的 UI 删除标记）")
+    zc2 = read_zcode(zc_db, include_archived=True, tasks_index=ti_db)
+    check(len(zc2) == 3, "zcode：include_archived=True 全放出（审计用）")
 
     print("== 6/8 反向写入器（codex / claude / hermes 沙箱回路）==")
     from agentsync import claudewrite, codexwrite, hermeswrite

@@ -45,8 +45,19 @@ def _trash_count(name: str, p) -> int | None:
     """各源回收站/归档计数（轻量 SQL/目录数，不做全量解析）。None=该源无此概念。"""
     try:
         if name == "zcode" and p.zcode_db:
+            # UI「删除」的真实落点是 tasks-index.sqlite（archived/deleted 标记），
+            # db.session.time_archived 是第二机制；两个都数上
+            ti = readers._zcode_tasks_index_path(p.zcode_db)
+            n = 0
+            if os.path.exists(ti):
+                try:
+                    con = sqlite3.connect(f"file:{ti.replace(chr(92), '/')}?mode=ro", uri=True)
+                    n += con.execute("SELECT COUNT(*) FROM tasks WHERE archived=1 OR deleted=1").fetchone()[0]
+                    con.close()
+                except Exception:
+                    pass
             con = sqlite3.connect(f"file:{str(p.zcode_db).replace(chr(92), '/')}?mode=ro", uri=True)
-            n = con.execute(
+            n += con.execute(
                 "SELECT COUNT(*) FROM session WHERE parent_id IS NULL AND time_archived IS NOT NULL"
             ).fetchone()[0]
             con.close()

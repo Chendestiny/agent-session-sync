@@ -71,8 +71,37 @@ def _zstd_decode_all(data: bytes) -> bytes:
 # ── zcode 读取器（~/.zcode/cli/db/db.sqlite）────────────────────────────
 
 
-def read_zcode(db_path, include_subagents: bool = False, include_archived: bool = False) -> list[Session]:
-    """include_archived=False：归档会话（time_archived 非空）不进同步——回收站不同步。"""
+def _zcode_tasks_index_path(db_path) -> str:
+    """db.sqlite（~/.zcode/cli/db/）→ tasks-index.sqlite（~/.zcode/v2/）。"""
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(str(db_path))))),
+        "v2", "tasks-index.sqlite")
+
+
+def _zcode_hidden_ids(tasks_index: str) -> set[str]:
+    """zcode UI「删除/归档」的会话 id 集合。
+
+    真相（0.16.5 实测）：UI 删除按钮调 RPC zcode-task.archiveTask，标记打在
+    ~/.zcode/v2/tasks-index.sqlite 的 tasks 表（archived=1 / deleted=1），
+    db.sqlite 的 session/message 完全不动——只读 db 会把「已删」当活会话同步出去。
+    读不到/表不存在返回空集（行为不回退）。
+    """
+    try:
+        con = sqlite3.connect(f"file:{str(tasks_index).replace(chr(92), '/')}?mode=ro", uri=True)
+        rows = con.execute("SELECT task_id FROM tasks WHERE archived=1 OR deleted=1").fetchall()
+        con.close()
+        return {str(r[0]) for r in rows}
+    except Exception:
+        return set()
+
+
+def read_zcode(db_path, include_subagents: bool = False, include_archived: bool = False,
+               tasks_index: str | None = None) -> list[Session]:
+    """include_archived=False：归档/已删会话不进同步——回收站不同步。
+
+    双机制排除：① db.session.time_archived（库级归档列）② tasks-index.sqlite
+    的 archived/deleted 标记（UI 删除的真实落点）。include_archived=True 全放出（审计用）。
+    """
     con = sqlite3.connect(f"file:{str(db_path).replace(chr(92), '/')}?mode=ro", uri=True)
     try:
         cur = con.cursor()
@@ -86,7 +115,12 @@ def read_zcode(db_path, include_subagents: bool = False, include_archived: bool 
         session_rows = cur.execute(
             f"SELECT id, directory, title, time_created, time_updated FROM session {where} ORDER BY time_created"
         ).fetchall()
+        hidden: set[str] = set()
+        if not include_archived:
+            hidden = _zcode_hidden_ids(tasks_index or _zcode_tasks_index_path(db_path))
         for sid, directory, title, created, updated in session_rows:
+            if sid in hidden:
+                continue
             msgs = list(
                 cur.execute(
                     "SELECT id, time_created, data FROM message WHERE session_id=? ORDER BY sequence", (sid,)
