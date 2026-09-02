@@ -7,11 +7,14 @@ zcode 的三表结构与 opencode 同族（agentctxsync 的 opencode 适配器�
 
 ```
 ~/.zcode/cli/
-├── db/db.sqlite          ← 会话权威索引（session/message/part 三表）
-├── rollout/model-io-sess_*.jsonl   ← 模型 IO 原始流（参考，不读写）
+├── db/db.sqlite          ← 会话权威库（核心三表 + 注册表族，见 §1.1）
+├── rollout/model-io-sess_*.jsonl   ← 模型 IO 原始流（每会话一个，删会话要连带）
 ├── agents/sess_*/        ← 子代理转写（独立文件，不在 db 主表）
 ├── artifacts/sess_*/     ← 会话产物
-└── exec/bash-startup/sess_*/
+├── exec/sess_*/          ← 执行现场
+├── exec/bash-startup/sess_*/      ← bash 启动快照（同 id 关联）
+├── image-cache/sess_*/   ← 图片缓存
+└── memories/projects/    ← 项目级记忆（不随会话删除）
 
 ~/.zcode/v2/
 ├── tasks-index.sqlite    ← ★ 桌面端 UI 任务索引（tasks.task_id = sess_<uuid>）
@@ -25,6 +28,23 @@ zcode 的三表结构与 opencode 同族（agentctxsync 的 opencode 适配器�
 `fault.subscribe.sessionNotFound`。清理会话必须同步清两个库（按 `task_id NOT IN
 (SELECT id FROM session)` 对齐）。当时状态：211 个 task 中 199 个僵尸，清理后 12 个
 （与 db 存活会话对齐），备份 `tasks-index.sqlite.cleanup-bak-*`。
+
+### 1.1 完整关联地图（2026-09-01 参考两个第三方清理工具补全）
+
+参考 [klopoikkm/zcode-session-manager](https://github.com/klopoikkm/zcode-session-manager)
+与 [aapplle/zcode-session-manager-fix](https://github.com/aapplle/zcode-session-manager-fix)
+（两者均为浏览/删除工具，**都不敢创建会话**——侧证外部写入此路不通），本机核实 15 张表全部在位：
+
+- **db.sqlite 里按会话 id 级联的表**（删除/对账时一个都不能漏）：核心三表
+  `session`/`message`/`part` + 注册表族 `session_entry`/`session_input`/`session_target`
+  + 计量族 `tool_usage`/`turn_usage`/`model_usage`/`input_history` + 任务链
+  `todo`/`session_task_link` + `workflow_run`/`workflow_activity`/`workflow_event`
+- **磁盘关联**（目录/文件名即会话 id）：`agents/`、`artifacts/`、`exec/`、
+  `exec/bash-startup/`、`image-cache/`、`rollout/model-io-<id>.jsonl`
+- **tasks-index.sqlite 四表**：`tasks`（主索引）+ `task_group_view_node_orders`
+  （`node_key` 是 JSON 数组 `[cwd, 会话id]`，清理须解析后按 id 精确匹配，防前缀相近误删）
+  + `automation_runs` + `off_peak_tasks`；索引库被占用（zcode 运行中）时清理会失败，需退出后补做
+- 只清 db 不清磁盘会留死目录残留（本机实测逮到 1 例：exec×2 + model-io 各一份）
 
 ## 2. 三张核心表
 

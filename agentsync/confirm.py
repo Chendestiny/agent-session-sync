@@ -11,14 +11,15 @@ import re
 import sys
 
 # 默认同步源（dsh 是目标不是源）
-SYNC_SOURCES = ["zcode", "hermes", "codex", "workbuddy", "claude", "opencode"]
+SYNC_SOURCES = ["zcode", "hermes", "codex", "workbuddy", "claude", "opencode", "qoder", "openclaw",
+                "cursor", "trae"]
 
 # 非交互缺参时的教学文案（sync.py / sync-finish.py 共用）
 NONINTERACTIVE_HELP = (
     "非交互环境无法弹确认菜单：请把两道确认写成显式参数后重跑（参数即确认）——\n"
     "  python sync.py to-dsh --apply --source all --scope inc\n"
     "  python sync-finish.py --sources zcode,workbuddy --scope 7d\n"
-    "  --source/--sources：all 或逗号组合（zcode,hermes,codex,workbuddy,claude,opencode）\n"
+    "  --source/--sources：all 或逗号组合（zcode,hermes,codex,workbuddy,claude,opencode,qoder,openclaw,cursor,trae）\n"
     "  --scope          ：inc(仅增量) | 7d | 30d | 任意N天(如 14 或 14d) | all(全部历史)"
 )
 

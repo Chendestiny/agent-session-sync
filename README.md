@@ -2,13 +2,13 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-七家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode**。
+十一家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae**（trae 布局对齐 cursor，待实机核验）。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：7 读 + 6 写，而非 7×6 条直连）。
+单向归一（A→C→B：9 读 + 6 写，而非 9×7 条直连）。
 
-| A · 读取源（7 家） | C · 归一化 | B · 写入目标（6 家 + 归档） |
+| A · 读取源（9 家） | C · 归一化 | B · 写入目标（6 家 + 归档） |
 |---|---|---|
-| codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy ＋ Markdown 归档（浏览/搜索） |
+| codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode · qoder · openclaw（均为只读源） | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy ＋ Markdown 归档（浏览/搜索） |
 
 ## 📋 前置条件
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，
@@ -44,7 +44,7 @@ Linux / macOS / WSL：
 同步会话：把各 agent 的会话全量增量导入 dsh，先跑 selftest 和 verify 自检
 ```
 
-## 🖥️ 只读可视化（Web Dashboard）
+## 🖥️ 可视化（Web Dashboard）
 
 **方式一 · 全局命令**：
 
@@ -62,7 +62,7 @@ python sync.py serve
 
 | 视图 | 看什么 |
 |---|---|
-| 总览 | 7 家源健康灯/实时会话数 + C 库水位线 + 7 泳道会话时间轴（位置=创建时间，宽度=跨度） |
+| 总览 | 9 家源健康灯/实时会话数 + C 库水位线 + 9 泳道会话时间轴（位置=创建时间，宽度=跨度） |
 | 会话列表 | 按源/日期/关键词筛选，点行下钻 |
 | 会话详情 | 轮次时间条（时间戳是否压平一眼可见）+ 轮次与工具调用明细 |
 
@@ -126,7 +126,9 @@ python sync.py attach-dsh --apply
 
 python sync.py archive  --source all --apply   # Markdown 归档 → ./archive
 python sync.py verify                          # 校验已导入 dsh 会话
-python sync.py serve                           # 只读可视化 dashboard：总览时间轴/会话列表/轮次时间条（浏览器自动开 127.0.0.1:8321）
+python sync.py regtest                         # 真库矩阵回归 dry-run：源×写目标逐格探针计划（11读6写闭环体检）
+python sync.py regtest --apply                 # 同上执行（退出全部目标应用）：每格写1条+幂等复跑+读回+自家→自家拦截验证
+python sync.py serve                           # 可视化 dashboard：总览时间轴/会话列表/轮次时间条（浏览器自动开 127.0.0.1:8321）
 python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
 python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
 python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
@@ -166,6 +168,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 - ✅ dsh 写入：使用 dsh 自带 JsonlSessionPersistence 后端读回校验 100% 通过（🛠️ tools/verify-dsh-backend.cmd 可复跑）
 - ✅ 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
 - ✅ 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
+- ✅ 48 格矩阵回归（2026-09-02 实测）：8 源 × 6 写目标真库闭环——42 格各精准写入 1 条（幂等复跑零写入、含导入口径读回轮数一致）+ 6 格自家→自家防回环拦截全部触发；`sync.py regtest` 一条命令可复跑
 - ✅ 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
 ### ⚠️ 踩坑记录
 
@@ -189,7 +192,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 📦 agentsync/
   paths.py              各家存储定位 + zcode project_id 规则
   model.py              归一化 IR + token 估算 + 三层预算裁剪
-  readers.py            七家读取器（全部只读）
+  readers.py            十一家读取器（全部只读）
   dshwrite.py           dsh 事件合成 + 多帧 zstd 落盘（幂等+增量）+ 工作区挂载
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档

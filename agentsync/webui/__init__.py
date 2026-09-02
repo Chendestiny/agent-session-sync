@@ -1,6 +1,6 @@
-"""只读 Web dashboard：python sync.py serve → http://127.0.0.1:8321
+"""Web dashboard：python sync.py serve → http://127.0.0.1:8321
 
-- 全只读：零写端点（POST 一律 405），实时读源无缓存
+- 浏览/导出下载（GET）；写操作走 sync.py CLI，页面无写端点（POST 一律 405），实时读源无缓存
 - 仅绑定 127.0.0.1；页面为包内 index.html（单文件、无构建、离线可用）
 """
 from __future__ import annotations
@@ -11,22 +11,35 @@ import sqlite3
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from .. import paths, readers, store, syncstate
 
 DEFAULT_PORT = 8321
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
-SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "claude", "opencode"]
+SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "claude", "opencode", "qoder", "openclaw",
+           "cursor", "trae"]
 _ROOT_ATTR = {
     "zcode": "zcode_db", "hermes": "hermes_db", "dsh": "dsh_sessions",
     "codex": "codex_sessions", "workbuddy": "workbuddy_home",
-    "claude": "claude_projects", "opencode": "opencode_db",
+    "claude": "claude_projects", "opencode": "opencode_db", "qoder": "qoder_home",
+    "openclaw": "openclaw_home", "cursor": "cursor_global_db", "trae": "trae_global_db",
 }
 
 
-def _meta(s) -> dict:
+def _imported_flag(source: str, sid: str, p) -> bool:
+    """该会话是否 agentsync 导入（其他 agent 会话的副本；同步口径默认排除）。"""
+    if source == "dsh":
+        return sid.startswith("import-")
+    if source == "opencode":
+        return bool(p.opencode_db) and sid in readers._oc_import_ids(p.opencode_db)
+    if source in ("hermes", "codex", "claude", "workbuddy"):
+        return readers._is_agentsync_uuid5(sid)
+    return False  # zcode/qoder/openclaw 从不是写入目标
+
+
+def _meta(s, imported: bool = False) -> dict:
     times = [t.time for t in s.turns if t.time]
     created = s.created_at or (min(times) if times else 0)
     last = s.updated_at or (max(times) if times else 0) or created
@@ -39,6 +52,7 @@ def _meta(s) -> dict:
         "span_last": max(times) if times else last,
         "path": s.source_path,
         "subagent": bool(getattr(s, "subagent", False)),
+        "imported": imported,
     }
 
 
@@ -75,10 +89,9 @@ def _trash_count(name: str, p) -> int | None:
             con.close()
             return int(n)
         if name == "dsh" and p.dsh_sessions:
-            trash = os.path.normpath(os.path.join(str(p.dsh_sessions), "..", "..", ".trash-dsh"))
-            if os.path.isdir(trash):
-                return sum(1 for d in os.listdir(trash) if os.path.isdir(os.path.join(trash, d)))
-            return 0
+            # 与 zcode/hermes 同口径：数源自身归档（dsh UI 软删名单），
+            # 不数 agentsync 自己的 ~/.trash-dsh（那是 prune 的可恢复区，另一个概念）
+            return len(readers._dsh_archived_ids(str(p.dsh_sessions)))
     except Exception:
         return None
     return None
@@ -86,6 +99,7 @@ def _trash_count(name: str, p) -> int | None:
 
 def api_overview() -> dict:
     p = paths.detect()
+    bound = paths.load_overrides()
     sources = []
     for name in SOURCES:
         root = getattr(p, _ROOT_ATTR[name])
@@ -93,6 +107,7 @@ def api_overview() -> dict:
             "name": name, "ok": root is not None,
             "path": str(root) if root else None,
             "trash": _trash_count(name, p) if root is not None else None,
+            "bound": name in bound,   # 手动绑定（~/.session-sync/paths.json）
         })
     res: dict = {"sources": sources}
     if store.store_exists():
@@ -125,13 +140,45 @@ def _hidden_ids(source: str, p) -> set[str]:
             con.close()
             return ids
         if source == "dsh" and p.dsh_sessions:
-            sp = os.path.normpath(os.path.join(str(p.dsh_sessions), "..", "storages", "workspace.json"))
-            data = json.load(open(sp, encoding="utf-8"))
-            arch = data.get("global", {}).get("archivedSessionIds")
-            return set(arch) if isinstance(arch, list) else set()
+            return readers._dsh_archived_ids(str(p.dsh_sessions))
     except Exception:
         return set()
     return set()
+
+
+def _titles_override() -> dict[str, str]:
+    """titles.json 人工标题叠加（仅 webui 显示层；同步侧仍走 to-dsh --titles 显式覆盖）。
+    默认读包根的 titles.json（skill junction 安装指向同一文件），SESSION_SYNC_TITLES 可改指（selftest 用）。"""
+    path = os.environ.get("SESSION_SYNC_TITLES") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "titles.json")
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+        return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _display_sessions(source: str, p):
+    """展示口径加载（含导入/子代理/归档，与同步口径的 reader 层排除互补）。
+    api_sessions 与 api_session 共用，保证列表与详情同一口径。"""
+    if source == "zcode" and p.zcode_db:
+        return readers.read_zcode(p.zcode_db, include_archived=True)
+    if source == "hermes" and p.hermes_db:
+        return readers.read_hermes(p.hermes_db, include_archived=True, include_imports=True)
+    if source == "workbuddy" and p.workbuddy_home:
+        return readers.read_workbuddy(p.workbuddy_home, include_deleted=True, include_imports=True)
+    if source == "dsh" and p.dsh_sessions:
+        return readers.read_dsh(str(p.dsh_sessions), include_subagents=True, include_archived=True,
+                                include_imports=True)
+    if source == "openclaw" and p.openclaw_home:
+        return readers.read_openclaw(str(p.openclaw_home), include_subagents=True)
+    if source == "codex" and p.codex_sessions:
+        return readers.read_codex(p.codex_sessions, include_imports=True)
+    if source == "claude" and p.claude_projects:
+        return readers.read_claude(p.claude_projects, include_imports=True)
+    if source == "opencode" and p.opencode_db:
+        return readers.read_opencode(p.opencode_db, include_imports=True)
+    return readers.load_sources([source], p).get(source, [])
 
 
 def api_sessions(source: str, q: str = "", t_from: int = 0, t_to: int = 0) -> list[dict]:
@@ -140,22 +187,16 @@ def api_sessions(source: str, q: str = "", t_from: int = 0, t_to: int = 0) -> li
     p = paths.detect()
     if getattr(p, _ROOT_ATTR[source]) is None:
         return []
-    # 展示口径含回收站/归档（trashed 标记）；同步口径的排除发生在 reader 层
-    if source == "zcode" and p.zcode_db:
-        sessions = readers.read_zcode(p.zcode_db, include_archived=True)
-    elif source == "hermes" and p.hermes_db:
-        sessions = readers.read_hermes(p.hermes_db, include_archived=True)
-    elif source == "workbuddy" and p.workbuddy_home:
-        sessions = readers.read_workbuddy(p.workbuddy_home, include_deleted=True)
-    elif source == "dsh" and p.dsh_sessions:
-        sessions = readers.read_dsh(str(p.dsh_sessions), include_subagents=True)
-    else:
-        sessions = readers.load_sources([source], p).get(source, [])
+    # 展示口径含回收站/归档/导入（trashed 标记）；同步口径的排除发生在 reader 层
+    sessions = _display_sessions(source, p)
     hidden = _hidden_ids(source, p)
+    ov = _titles_override()
     metas = []
     for s in sessions:
-        m = _meta(s)
+        m = _meta(s, imported=_imported_flag(source, s.source_id, p))
         m["trashed"] = s.source_id in hidden
+        if s.source_id in ov:
+            m["title"] = ov[s.source_id]
         metas.append(m)
     if q:
         ql = q.lower()
@@ -172,10 +213,69 @@ def api_session(source: str, sid: str) -> dict | None:
     if source not in SOURCES:
         raise ValueError(f"unknown source: {source}")
     p = paths.detect()
-    for s in readers.load_sources([source], p).get(source, []):
+    ov = _titles_override()
+    for s in _display_sessions(source, p):
         if s.source_id == sid:
-            return store.session_to_dict(s)
+            d = store.session_to_dict(s)
+            d["imported"] = _imported_flag(source, s.source_id, p)
+            d["subagent"] = bool(getattr(s, "subagent", False))
+            if s.source_id in ov:
+                d["title"] = ov[s.source_id]
+            return d
     return None
+
+
+def api_export(source: str, sid: str, fmt: str = "md"):
+    """单会话导出下载：fmt=md（人读 Markdown）/ ir（C 库同构 IR JSON，可回写 push）。"""
+    from .. import archive as _archive
+
+    p = paths.detect()
+    for s in _display_sessions(source, p):
+        if s.source_id == sid:
+            ov = _titles_override()
+            if s.source_id in ov:
+                s.title = ov[s.source_id]
+            safe = sid.replace("/", "_").replace("\\", "_")[:40] or "session"
+            if fmt == "ir":
+                body = json.dumps(store.session_to_dict(s), ensure_ascii=False, indent=1).encode("utf-8")
+                return f"{safe}.ir.json", "application/json; charset=utf-8", body
+            return f"{safe}.md", "text/markdown; charset=utf-8", _archive.render_markdown(s).encode("utf-8")
+    return None
+
+
+def api_export_source(source: str, fmt: str = "md", days: int = 0, ids: str = ""):
+    """整源批量导出：fmt=md（合并单文件 Markdown）/ jsonl（一行一会话，C 库同构）。
+    口径=卡片「原生」：排除 🤖子代理、🗑回收站、📥导入副本（正主在原生源）。
+    ids=逗号分隔的显式会话清单（webui 列表框勾选后传入），优先于 days 过滤。"""
+    from .. import archive as _archive
+    from datetime import datetime, timedelta
+
+    if source not in SOURCES:
+        raise ValueError(f"unknown source: {source}")
+    p = paths.detect()
+    if getattr(p, _ROOT_ATTR[source]) is None:
+        return None
+    hidden = _hidden_ids(source, p)
+    ov = _titles_override()
+    floor = (datetime.now() - timedelta(days=days)).timestamp() * 1000 if days else 0
+    want = {i for i in ids.split(",") if i} if ids else None
+    picked = [s for s in _display_sessions(source, p)
+              if not getattr(s, "subagent", False)
+              and s.source_id not in hidden
+              and not _imported_flag(source, s.source_id, p)
+              and (not floor or (s.updated_at or s.created_at or 0) >= floor)
+              and (want is None or s.source_id in want)]
+    stamp = datetime.now().strftime("%Y%m%d")
+    if fmt == "jsonl":
+        body = "\n".join(json.dumps(store.session_to_dict(s), ensure_ascii=False) for s in picked).encode("utf-8")
+        return f"{source}-sessions-{stamp}.jsonl", "application/x-ndjson; charset=utf-8", body
+    parts = [f"# {source} 会话导出（{len(picked)} 条 · {stamp}）\n"]
+    for s in picked:
+        if s.source_id in ov:
+            s.title = ov[s.source_id]
+        parts.append(_archive.render_markdown(s))
+    body = "\n\n---\n\n".join(parts).encode("utf-8")
+    return f"{source}-sessions-{stamp}.md", "text/markdown; charset=utf-8", body
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -215,6 +315,31 @@ class Handler(BaseHTTPRequestHandler):
                 if data is None:
                     return self._json({"error": "not found"}, 404)
                 return self._json(data)
+            if u.path == "/api/export":
+                out = api_export(qs.get("source", ""), qs.get("id", ""), qs.get("fmt", "md"))
+                if out is None:
+                    return self._json({"error": "not found"}, 404)
+                fname, mime, body = out
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(fname)}")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if u.path == "/api/export-source":
+                out = api_export_source(qs.get("source", ""), qs.get("fmt", "md"),
+                                        int(qs.get("days") or 0), qs.get("ids", ""))
+                if out is None:
+                    return self._json({"error": "not found"}, 404)
+                fname, mime, body = out
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(fname)}")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             self._json({"error": "not found"}, 404)
         except ValueError as e:
             self._json({"error": str(e)}, 400)
@@ -222,7 +347,31 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
     def do_POST(self) -> None:
-        self._json({"error": "read-only dashboard (v1 has no write endpoints)"}, 405)
+        u = urlparse(self.path)
+        if u.path == "/api/pick-folder":
+            # 原生目录选择：浏览器拿不到绝对路径，由本地服务弹系统对话框（tkinter 标准库）
+            try:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes("-topmost", True)
+                path = filedialog.askdirectory(title="选择 agent 数据目录")
+                root.destroy()
+                return self._json({"ok": bool(path), "path": path or ""})
+            except Exception as e:
+                return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"})
+        if u.path == "/api/bind-path":
+            # 唯一 POST 例外：目录绑定。只写 ~/.session-sync/paths.json（本地配置），
+            # 不碰任何 agent 数据；校验/解析/解绑都在 paths.bind_override
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                out = paths.bind_override(str(body.get("source", "")), str(body.get("path", "")))
+                return self._json(out, 200 if out.get("ok") else 400)
+            except Exception as e:  # 参数坏不崩服务
+                return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 400)
+        self._json({"error": "POST 不支持（唯一例外：目录绑定 /api/bind-path；其余写操作走 sync.py CLI）"}, 405)
 
     def log_message(self, fmt, *args) -> None:
         print(f"  [webui] {self.address_string()} {fmt % args}")

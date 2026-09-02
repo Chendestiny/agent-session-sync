@@ -61,7 +61,10 @@ payload 为 OpenAI Responses API item：
 - glob `**/*.jsonl` 递归；session_meta 取 id/cwd/时间/子代理判定；turn_context 取模型；
 - user 消息（滤 `<` 开头块）开轮；assistant 开 step；function_call 挂最近 step（无则新开）；
   output 按 call_id 挂回调用所属 step；
-- 无显式标题源：标题回退首问（或读 session_index.jsonl，本工具暂不读）。
+- 标题：rollout 无标题字段（`session_index.jsonl` 有 thread_name，暂不读；state 库 threads
+  表的 title 也是首问截断）。`read_codex` 派生标题时**剥掉首问开头的盘符路径前缀**取真问题
+  ——用户习惯贴文件路径当上下文，同项目多会话截断后显示撞车（实测 9× 同前缀）；
+  webui 显示层另叠加仓库根 titles.json 人工标题（`SESSION_SYNC_TITLES` 可改指）。
 
 ## 4. 写入侧（若需要 codex→codex 回写，参考 agentctxsync）
 

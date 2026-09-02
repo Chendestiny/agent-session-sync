@@ -9,10 +9,10 @@
 ```
 ~/.claude/
 ├── projects/                        ← 每个工作区(cwd)一个目录
-│   ├── C--Users-neware/             ← 目录名 = cwd 转义（\: 与 . → -）
+│   ├── C--Users-alice/              ← 目录名 = cwd 转义（\: 与 . → -）
 │   │   ├── <sessionId(uuid)>.jsonl  ← 一个会话一个文件（追加写）
 │   │   └── …
-│   └── C--Users-neware-AppData-Local-Temp-claude-ping/   ← TEMP 冒烟，读取跳过
+│   └── C--Users-alice-AppData-Local-Temp-claude-ping/   ← TEMP 冒烟，读取跳过
 ├── history.jsonl                    ← 命令历史（不用）
 └── …（settings/todos/stats 等，不用）
 ```
@@ -50,6 +50,8 @@ sessionId, version, gitBranch, userType, entrypoint`。
 **关键结构规则**：Claude 把 tool_result 放在下一条 user 消息里。读取器用
 `call_steps[tool_use_id]` 把结果挂回发起调用的 assistant step，该 user 行**不单独成轮**；
 剥离注入后无真实文本的 user 行一律不成轮。
+**导入不回流开关**：claudewrite 铸的 sessionId 是 uuid5（原生全 uuid4），读取器默认整文件
+跳过防环；`read_claude(dir, include_imports=True)` 保留（webui 展示 / regtest 读回口径）。
 
 ## 4. 注入剥离（user 文本）
 

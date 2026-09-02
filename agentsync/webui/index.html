@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-session-sync · 只读 dashboard</title>
+<title>agent-session-sync · 会话同步 dashboard</title>
 <style>
 :root{
   --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --line:#2a2f3c;
@@ -24,33 +24,66 @@ nav a:hover{color:var(--fg)}
 #refresh{margin-left:auto;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
   border-radius:6px;padding:5px 14px;cursor:pointer}
 #refresh:hover{border-color:var(--accent)}
-main{padding:18px;max-width:1280px;margin:0 auto}
-h2{font-size:15px;color:var(--dim);font-weight:600;margin:26px 0 10px}
+main{padding:12px 14px;max-width:1280px;margin:0 auto}
+h2{font-size:14px;color:var(--dim);font-weight:600;margin:10px 0 6px}
 h2:first-child{margin-top:0}
 .err{color:var(--err);white-space:pre-wrap}
 .dim{color:var(--dim)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:86px;
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(208px,1fr));gap:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 10px;
   transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}
 .card:hover{border-color:var(--accent)}
 .card.click{cursor:pointer}
 .card.click:hover{transform:translateY(-1px);box-shadow:0 3px 12px rgba(0,0,0,.4)}
-.card .src{display:flex;align-items:center;gap:8px;font-weight:700}
+.card .src{display:flex;align-items:center;gap:6px;font-weight:700;flex-wrap:wrap}
 .card .src .sw{width:10px;height:10px;border-radius:3px;flex:none}
-.card .path{font-size:11px;color:var(--dim);margin-top:6px;word-break:break-all}
-.card .stat{font-size:12px;color:var(--dim);margin-top:8px}
+.card .path{font-size:10px;color:var(--dim);margin-top:2px;display:flex;gap:6px;align-items:center}
+.card .path .pt{flex:1;min-width:0;word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .stat{font-size:12px;color:var(--dim);margin-top:3px}
+.card .tags{display:flex;gap:4px;margin-left:auto;flex:none;flex-wrap:wrap}
+.tag{font-size:10px;padding:1px 5px;border-radius:8px;border:1px solid var(--line);color:var(--dim)}
+.tag.e{border-color:#3b82f6;color:#3b82f6;cursor:pointer;transition:background .12s,color .12s}
+.tag.e:hover{background:#3b82f6;color:#0f1115}
+.tag.w{border-color:#10b981;color:#10b981;cursor:pointer;transition:background .12s,color .12s}
+.tag.w:hover{background:#10b981;color:#0f1115}
+.tag.r{border-color:#6b7280;color:#9ca3af;cursor:default}
+.tag.b{border-color:var(--dim);color:var(--dim);cursor:pointer;transition:background .12s,color .12s}
+.tag.b:hover{background:var(--dim);color:#0f1115}
+.bindlnk{color:var(--err);cursor:pointer;text-decoration:underline dotted}
+.bl{color:var(--accent);font-size:10px}
+a.xbtn{font-size:11px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-right:3px}
+a.xbtn:hover{border-color:var(--accent)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;max-width:680px;width:92%;padding:16px 18px;max-height:82vh;overflow:auto}
+.modal label{display:inline-block;margin:2px 10px 2px 0;font-size:13px;cursor:pointer}
+.modal .kv{margin:10px 0 2px}
+.mbtn{background:var(--accent);border:none;color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;margin-right:8px}
+.mbtn.ghost{background:transparent;border:1px solid var(--line);color:var(--dim)}
+.modal pre{white-space:pre-wrap;margin:0}
+/* 导出弹窗：会话列表框 + 滚动条 */
+.chipbtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:12px;
+  padding:2px 10px;font-size:12px;cursor:pointer;margin-right:6px}
+.chipbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.xlist{max-height:250px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-top:6px}
+.xitem{display:flex;gap:8px;align-items:center;font-size:12px;padding:2px 0;cursor:pointer}
+.xitem .xt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xitem .xd{color:var(--dim);font-size:11px;flex:none}
+.xlist::-webkit-scrollbar,.modal .box::-webkit-scrollbar{width:8px}
+.xlist::-webkit-scrollbar-track,.modal .box::-webkit-scrollbar-track{background:transparent}
+.xlist::-webkit-scrollbar-thumb,.modal .box::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.xlist::-webkit-scrollbar-thumb:hover,.modal .box::-webkit-scrollbar-thumb:hover{background:var(--dim)}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 .dot.on{background:var(--ok)} .dot.off{background:var(--err)}
 .kv{font-size:12px;color:var(--dim);margin-top:4px}
 .kv b{color:var(--fg);font-weight:600}
 /* 时间轴 */
-.tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto}
-.tl-axis{position:relative;height:20px;margin-left:96px;color:var(--dim);font-size:11px}
+.tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;overflow:hidden}
+.tl-axis{position:relative;height:18px;margin-left:84px;color:var(--dim);font-size:10px}
 .tl-axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
-.lane{display:flex;align-items:center;height:30px}
-.lane .lb{width:88px;flex:none;font-size:12px;color:var(--dim);text-align:right;padding-right:8px}
-.lane .track{position:relative;flex:1;height:22px;background:var(--panel2);
+.lane{display:flex;align-items:center;height:22px}
+.lane .lb{width:76px;flex:none;font-size:11px;color:var(--dim);text-align:right;padding-right:8px}
+.lane .track{position:relative;flex:1;height:16px;background:var(--panel2);
   border-radius:4px;overflow:hidden}
 .bar{position:absolute;top:4px;height:14px;border-radius:2px;min-width:3px;opacity:.85;cursor:pointer}
 .bar:hover{opacity:1;outline:1px solid #fff3}
@@ -72,8 +105,9 @@ tr.row.trashed{opacity:.45}
 tr.row.trashed td:nth-child(2){text-decoration:line-through;text-decoration-color:#6b7280}
 tr.row.subrow{opacity:.55}
 tr.row.subrow td:nth-child(2){color:var(--dim)}
+tr.row.improw td:nth-child(2){color:#f59e0b}
 .badge{display:inline-block;border-radius:4px;padding:0 8px;font-size:11px;
-  color:#0f1115;font-weight:700}
+  color:#0f1115;font-weight:700;white-space:nowrap}
 /* 详情 */
 .hd{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .hd .t{font-size:16px;font-weight:700;margin:6px 0 2px}
@@ -96,7 +130,7 @@ svg .tick{stroke:var(--line)} svg text{fill:var(--dim);font-size:10px}
 </head>
 <body>
 <header>
-  <div class="brand">agent-session-sync<span class="tag">只读 dashboard</span></div>
+  <div class="brand">agent-session-sync</div>
   <nav>
     <a href="#/" data-view="overview">总览</a>
     <a href="#/sessions" data-view="sessions">会话列表</a>
@@ -106,11 +140,14 @@ svg .tick{stroke:var(--line)} svg text{fill:var(--dim);font-size:10px}
 <main id="app"></main>
 <script>
 "use strict";
-const SOURCES = ["zcode","hermes","dsh","codex","workbuddy","claude","opencode"];
-const COLORS = {zcode:"#f59e0b",hermes:"#10b981",dsh:"#4f8cff",codex:"#a78bfa",
-                workbuddy:"#f472b6",claude:"#fb923c",opencode:"#22d3ee"};
+const SOURCES = ["zcode","hermes","dsh","codex","workbuddy","claude","opencode","qoder","openclaw","cursor","trae"];
+const COLORS = {zcode:"#84cc16",hermes:"#eab308",dsh:"#4f8cff",codex:"#a78bfa",
+                workbuddy:"#f472b6",claude:"#f97316",opencode:"#22d3ee",qoder:"#14b8a6",openclaw:"#ef4444",
+                cursor:"#6366f1",trae:"#0ea5e9"};
 const SRC_CN  = {zcode:"ZCode",hermes:"Hermes",dsh:"DSH",codex:"Codex",
-                 workbuddy:"WorkBuddy",claude:"Claude Code",opencode:"OpenCode"};
+                 workbuddy:"WorkBuddy",claude:"Claude Code",opencode:"OpenCode",qoder:"Qoder",openclaw:"OpenClaw",
+                 cursor:"Cursor",trae:"Trae"};
+const WRITABLE = new Set(["dsh","codex","claude","hermes","opencode","workbuddy"]); // 6 写入目标；zcode/qoder/openclaw 只读
 let metasCache = {};          // source -> metas[]
 const app = document.getElementById("app");
 
@@ -158,9 +195,172 @@ function errBox(msg){ return '<div class="err">加载失败：'+esc(msg)+"</div>
 function badge(src){ return '<span class="badge" style="background:'+COLORS[src]+'">'+esc(SRC_CN[src]||src)+"</span>"; }
 
 /* ── 视图：总览 ───────────────────────────────────── */
+/* ── 弹窗：整源导出 / 写入提示词 ────────────────────── */
+function closeModal(){ const m = document.getElementById("modalOv"); if(m) m.remove(); }
+function openModal(html){
+  closeModal();
+  const ov = document.createElement("div");
+  ov.className = "modal"; ov.id = "modalOv";
+  ov.innerHTML = '<div class="box">'+html+'</div>';
+  ov.addEventListener("click", e => { if(e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+}
+function copyText(t, btn){
+  const done = ok => { if(btn){ const old = btn.textContent; btn.textContent = ok ? "已复制 ✓" : "复制失败";
+    setTimeout(() => { btn.textContent = old; }, 1500); } };
+  const fallback = () => {
+    const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta);
+    ta.select(); let ok = false; try{ ok = document.execCommand("copy"); }catch(e){}
+    ta.remove(); done(ok);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(() => done(true), fallback);
+  } else fallback();
+}
+async function openExportModal(src){
+  let ms = [];
+  try{ ms = await cacheGet(src); }catch(e){}
+  ms = ms.filter(m => !m.subagent && !m.trashed && !m.imported)   // 口径=原生
+         .sort((a,b) => b.updated_at - a.updated_at);
+  openModal(
+    '<h3 style="margin:0 0 10px">导出 ' + esc(SRC_CN[src]||src) + ' 会话</h3>'
+    + '<div class="kv">格式：</div>'
+    + '<label><input type="radio" name="xfmt" value="md" checked> Markdown（人读 · 合并单文件）</label>'
+    + '<label><input type="radio" name="xfmt" value="jsonl"> IR JSONL（机读 · 一行一会话 · 与 C 库同构，可 push 回写）</label>'
+    + '<div class="kv" style="margin-top:10px">会话（可手动勾选）：<span class="chipbtn on" data-days="0">全部</span>'
+    + '<span class="chipbtn" data-days="7">最近 7 天</span><span class="chipbtn" data-days="30">最近 30 天</span>'
+    + ' <span id="xcount" style="color:var(--dim);font-size:12px"></span></div>'
+    + '<div class="xlist" id="xlist">' + (ms.length
+        ? ms.map(m => '<label class="xitem"><input type="checkbox" checked value="'+esc(m.id)+'">'
+            + '<span class="xt" title="'+esc(m.title||m.id)+'">'+esc((m.title||"(无标题)").slice(0,60))+'</span>'
+            + '<span class="xd">'+esc(fmtShort(m.updated_at))+'</span></label>').join("")
+        : '<div class="hint">该源无可导出的原生会话</div>') + '</div>'
+    + '<div class="hint" style="margin:8px 0">口径 = 原生会话：排除 🤖子代理、🗑回收站、📥导入副本（正主在各自原生源）。</div>'
+    + '<button class="mbtn" id="xgo">⬇ 下载</button><button class="mbtn ghost" id="xclose">关闭</button>'
+  );
+  const list = document.getElementById("xlist");
+  const count = () => {
+    const n = list.querySelectorAll("input:checked").length;
+    document.getElementById("xcount").textContent = "已选 " + n + " / " + ms.length;
+    return n;
+  };
+  count();
+  list.addEventListener("change", () => { count();
+    document.querySelectorAll(".chipbtn").forEach(c => c.classList.remove("on")); });  // 手动改选后快选不再高亮
+  document.querySelectorAll(".chipbtn").forEach(c => c.onclick = () => {
+    document.querySelectorAll(".chipbtn").forEach(x => x.classList.remove("on"));
+    c.classList.add("on");
+    const d = Number(c.dataset.days);
+    const floor = d ? Date.now() - d*864e5 : 0;
+    list.querySelectorAll("input[type=checkbox]").forEach(cb => {
+      const m = ms.find(x => x.id === cb.value);
+      cb.checked = !!m && (!floor || m.updated_at >= floor);
+    });
+    count();
+  });
+  document.getElementById("xgo").onclick = () => {
+    const fmt = document.querySelector('input[name="xfmt"]:checked').value;
+    const ids = Array.from(list.querySelectorAll("input:checked")).map(cb => cb.value);
+    if(!ids.length){ alert("请至少勾选一条会话"); return; }
+    location.href = "/api/export-source?source=" + encodeURIComponent(src) + "&fmt=" + fmt
+                  + "&ids=" + encodeURIComponent(ids.join(","));
+    closeModal();
+  };
+  document.getElementById("xclose").onclick = closeModal;
+}
+function writePrompt(src){
+  const head = "使用 session-sync skill（~/.agents/skills/session-sync/，一句话触发，手册在里面）：";
+  if(src === "dsh"){
+    return [
+      head + "把其他 agent 的最新会话同步进 dsh，并完成挂载分组。",
+      "要求：",
+      "1. 先 selftest 自检，必须全绿再动真实数据；",
+      "2. dry-run 看写入计划，确认后再落盘（增量 + 预算控制，防超上下文）；",
+      "3. 写入后完全退出 dsh 再挂载（attach），否则会话堆在「未分组」；",
+      "4. 如实报告：写了多少、跳过多少、有无裁剪。"
+    ].join("\n");
+  }
+  const needExit = ["hermes","opencode","workbuddy"].includes(src) ? "；目标应用需先完全退出再写入" : "";
+  return [
+    head + "把其他 agent 的最新会话同步进 " + (SRC_CN[src]||src) + needExit + "。",
+    "要求：",
+    "1. 先 selftest 自检，必须全绿再动真实数据；",
+    "2. dry-run 看写入计划，确认后再落盘（增量 scope=inc）；",
+    "3. 如实报告：写了多少、跳过多少。"
+    ].join("\n");
+}
+function openWriteModal(src){
+  const p = writePrompt(src);
+  openModal(
+    '<h3 style="margin:0 0 10px">写入 ' + esc(SRC_CN[src]||src) + '：把提示词交给 agent 代跑</h3>'
+    + '<div style="display:flex;gap:10px;align-items:flex-start">'
+    + '<pre style="flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px">' + esc(p) + '</pre>'
+    + '<button class="mbtn" id="wcopy" style="flex:none">复制</button></div>'
+    + '<div class="hint" style="margin-top:8px">复制后粘给任意 AI agent（zcode / codex / dsh…）即可代执行；写入命令默认 dry-run，agent 会先看计划再加 --apply。</div>'
+  );
+  document.getElementById("wcopy").onclick = function(){ copyText(p, this); };
+}
+function openBindModal(src){
+  const inp = 'style="flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:6px 8px;font-size:13px"';
+  openModal(
+    '<h3 style="margin:0 0 10px">绑定 ' + esc(SRC_CN[src]||src) + ' 数据目录</h3>'
+    + '<div class="hint">粘贴该源存储的绝对路径——应用根目录或 sessions / state.db 等直接目标均可，后端自动识别结构并校验。<br>'
+    + '注：浏览器安全策略不允许网页读取所选文件夹的绝对路径，「选文件夹」只用于预填文件夹名，仍需补全。</div>'
+    + '<div style="display:flex;gap:8px;margin:8px 0">'
+    + '<input id="bpath" type="text" ' + inp + ' placeholder="例如 C:\\Users\\me\\.' + (src==='zcode'?'zcode':src) + '">'
+    + '<button class="mbtn ghost" id="bnative" style="margin:0;flex:none" title="本地服务弹系统对话框，直接拿绝对路径">原生选择…</button>'
+    + '<label class="mbtn ghost" style="margin:0;flex:none" title="浏览器安全策略拿不到绝对路径，只做预填">网页选文件夹<input type="file" webkitdirectory id="bpick" style="display:none"></label></div>'
+    + '<div id="bmsg" class="hint" style="min-height:18px"></div>'
+    + '<button class="mbtn" id="bgo">校验并保存</button>'
+    + '<button class="mbtn ghost" id="bunbind">解绑（恢复自动探测）</button>'
+    + '<button class="mbtn ghost" id="bclose">关闭</button>'
+  );
+  const msg = document.getElementById("bmsg");
+  const pathEl = document.getElementById("bpath");
+  document.getElementById("bpick").onchange = ev => {
+    const fs = ev.target.files;
+    if(!fs || !fs.length) return;
+    const f = fs[0];
+    let guess = (f.path && String(f.path)) || "";   // 非标准属性：Electron/旧内核才有
+    if(!guess){
+      const root = (f.webkitRelativePath || "").split("/")[0];
+      guess = root ? "~/" + root : "";
+    }
+    if(guess) pathEl.value = guess;
+    msg.textContent = guess.startsWith("~") ? "已预填文件夹名（" + guess + "）——请补全为绝对路径后保存"
+                                            : "已带入所选路径，确认无误后保存";
+  };
+  document.getElementById("bnative").onclick = async () => {
+    msg.textContent = "等待系统对话框…（取消则无操作）";
+    try{
+      const r = await fetch("/api/pick-folder", {method: "POST"});
+      const d = await r.json();
+      if(d.ok && d.path){
+        pathEl.value = d.path;
+        msg.textContent = "已选：" + d.path + "（自动校验保存中…）";
+        post(d.path);   // 选完直接绑定
+      } else {
+        msg.textContent = d.ok ? "已取消选择" : ("原生对话框不可用：" + (d.error || "") + "——请改用粘贴路径");
+      }
+    }catch(e){ msg.textContent = "请求失败：" + e.message; }
+  };
+  const post = async path => {
+    try{
+      const r = await fetch("/api/bind-path", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({source: src, path: path})});
+      const d = await r.json();
+      msg.textContent = d.detail || (d.ok ? "OK" : "失败");
+      if(d.ok) setTimeout(() => { closeModal(); cachePurge(); route(); }, 700);
+    }catch(e){ msg.textContent = "请求失败：" + e.message; }
+  };
+  document.getElementById("bgo").onclick = () => { msg.textContent = "校验中…"; post(pathEl.value.trim()); };
+  document.getElementById("bunbind").onclick = () => post("");
+  document.getElementById("bclose").onclick = closeModal;
+}
+
 async function renderOverview(){
-  app.innerHTML = '<h2>源健康</h2><div class="cards" id="srcCards"></div>'
-    + '<h2>规范库 C（~/.session-sync）</h2><div class="cards" id="cCard"></div>'
+  app.innerHTML = '<h2>源健康（末位卡 = C 规范库 ~/.session-sync）</h2><div class="cards" id="srcCards"></div>'
     + '<h2>会话时间轴（位置=创建时间 · 宽度=首末轮跨度 · 点击下钻）</h2>'
     + '<div class="tl" id="tl"><div class="hint">加载中…</div></div>';
   let ov;
@@ -172,31 +372,50 @@ async function renderOverview(){
   cards.innerHTML = ov.sources.map(s =>
     '<div class="card click" id="card-'+s.name+'" data-src="'+s.name+'" title="点击查看该源会话列表">'
     + '<div class="src"><span class="dot '+(s.ok?"on":"off")+'"></span>'
-    + '<span class="sw" style="background:'+COLORS[s.name]+'"></span>'+esc(SRC_CN[s.name]||s.name)+'</div>'
-    + '<div class="path">'+esc(s.path||"未找到")+'</div>'
+    + '<span class="sw" style="background:'+COLORS[s.name]+'"></span>'+esc(SRC_CN[s.name]||s.name)
+    + '<span class="tags"><span class="tag e" title="读取器已接，可导出 Markdown / IR JSON">可导出</span>'
+    + '<span class="tag '+(WRITABLE.has(s.name)?"w":"r")+'" title="'
+    + (WRITABLE.has(s.name) ? "to-X 写入器已接（会话可写入此目标）" : "只读源（无写入器；zcode 曾因兼容性问题禁写）")
+    + '">'+(WRITABLE.has(s.name)?"可写入":"只读")+'</span>'
+    + '<span class="tag b" title="绑定/解绑数据目录（存 ~/.session-sync/paths.json，优先于自动探测）">⚙</span></span></div>'
+    + '<div class="path"><span class="pt">'+(s.path ? esc(s.path) : '<span class="bindlnk">未找到 · 点击绑定</span>')+'</span>'
+    + (s.bound ? '<span class="bl" style="flex:none" title="已手动绑定（~/.session-sync/paths.json）">🔗已绑定</span>' : "") + '</div>'
     + '<div class="stat">…</div>'
-    + (s.trash ? '<div class="kv">🗑 回收站 <b>'+s.trash+'</b> 条'+(s.name==="dsh"?"（prune 移入）":"（已排除同步）")+'</div>' : "")
+    + (s.trash ? '<div class="kv">🗑 回收站 <b>'+s.trash+'</b> 条（已排除同步）</div>' : "")
     + '</div>').join("");
   cards.querySelectorAll(".card.click").forEach(c => c.onclick = () => {
     filt.sources = new Set([c.dataset.src]);
     filt.q = ""; filt.from = ""; filt.to = "";
     location.hash = "#/sessions";
   });
+  cards.querySelectorAll(".tag").forEach(t => t.onclick = e => {
+    e.stopPropagation();
+    const src = t.closest(".card").dataset.src;
+    if(t.classList.contains("e")) openExportModal(src);
+    else if(t.classList.contains("w")) openWriteModal(src);
+    else if(t.classList.contains("b")) openBindModal(src);
+  });
+  cards.querySelectorAll(".bindlnk").forEach(l => l.onclick = e => {
+    e.stopPropagation();
+    openBindModal(l.closest(".card").dataset.src);
+  });
   document.querySelectorAll("#srcCards .stat").forEach(el => el.textContent = "统计加载中…");
 
-  const cEl = document.getElementById("cCard");
+  const cEl = document.createElement("div");
+  cEl.className = "card";
+  document.getElementById("srcCards").appendChild(cEl);
   if(ov.store){
     const st = ov.store;
     const counts = Object.entries(st.counts||{}).map(([k,v])=>k+" "+v).join(" · ")||"（空）";
     const pull = Object.entries(st.state||{}).map(([k,v])=>k+" "+fmtShort(v)).join(" · ");
     const push = Object.entries(st.push||{}).map(([t,m])=>t+"（"+Object.entries(m).map(([k,v])=>k+" "+fmtShort(v)).join(" · ")+"）").join("；");
-    cEl.innerHTML = '<div class="card"><div class="src">📦 C 规范库</div>'
+    cEl.innerHTML = '<div class="src">📦 C 规范库</div>'
       + '<div class="path">'+esc(st.dir)+'</div>'
       + '<div class="kv">会话：<b>'+esc(counts)+'</b></div>'
       + (pull?'<div class="kv">pull 基准：'+esc(pull)+'</div>':"")
-      + (push?'<div class="kv">push 水位：'+esc(push)+'</div>':"")+'</div>';
+      + (push?'<div class="kv">push 水位：'+esc(push)+'</div>':"");
   }else{
-    cEl.innerHTML = '<div class="card"><div class="src">📦 C 规范库</div><div class="path">尚未创建（先跑 pull）</div></div>';
+    cEl.innerHTML = '<div class="src">📦 C 规范库</div><div class="path">尚未创建（先跑 pull）</div>';
   }
 
   /* 每源并行拉 metas（走缓存：返回不再重新加载）；单源慢不阻塞别的源 */
@@ -209,13 +428,10 @@ async function renderOverview(){
       if(card){
         const last = ms[0];
         let stat;
-        if(src === "dsh"){
-          const im = ms.filter(m => String(m.id).startsWith("import-")).length;
-          const sub = ms.filter(m => m.subagent).length;
-          stat = '<b>'+ms.length+'</b> = 导入 '+im+' + 原生 '+(ms.length-im-sub)+' + 🤖子代理 '+sub+'（子代理默认不同步）';
-        }else{
-          stat = '<b>'+ms.length+'</b> 个会话'+(last?' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」":"");
-        }
+        const n = ms.filter(m => !m.subagent).length;  // 🤖子代理默认不同步，不进统计
+        const im = ms.filter(m => !m.subagent && m.imported).length;  // 📥导入副本计入但单列（正主在原生源）
+        stat = '<b>'+n+'</b> = 导入 '+im+' + 原生 '+(n-im)
+             + (last?' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」":"");
         card.querySelector(".stat").innerHTML = stat;
       }
     }catch(e){
@@ -251,7 +467,8 @@ function renderTimeline(all){
       const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+(m.trashed?" · 🗑回收站":"")+(m.subagent?" · 🤖子代理":"")+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
       bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+(m.trashed?"#4b5563":COLORS[src])+';opacity:'+(m.subagent?".35":".85")+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
     }
-    html += '<div class="lane"><div class="lb">'+esc(SRC_CN[src]||src)+" "+(all[src]?all[src].length:0)+'</div><div class="track">'+bars+"</div></div>";
+    const shown = (all[src]||[]).filter(m => !m.subagent).length;  // 泳道计数与源卡同口径（不含🤖子代理）
+    html += '<div class="lane"><div class="lb">'+esc(SRC_CN[src]||src)+" "+shown+'</div><div class="track">'+bars+"</div></div>";
   }
   tl.innerHTML = html;
   tl.querySelectorAll(".bar").forEach(b => b.onclick = () => { location.hash = b.dataset.href; });
@@ -274,7 +491,7 @@ function drawFilterBar(){
   const nSub = Object.values(metasCache).flat().filter(m => m.subagent).length;
   bar.innerHTML = SOURCES.map(s =>
     '<span class="chip'+(filt.sources.has(s)?" on":"")+'" data-s="'+s+'" style="'+(filt.sources.has(s)?"color:"+COLORS[s]+" !important;border-color:"+COLORS[s]:"")+'">'+esc(SRC_CN[s]||s)+"</span>").join("")
-    + ' <span class="chip'+(filt.hideSub?"":" on")+'" id="fSub" title="origin=subagent 的委派会话（dsh 每次子代理委派各落一个目录，侧栏默认隐藏；同步默认排除）">🤖 子代理'+(nSub?"×"+nSub:"")+(filt.hideSub?"（隐藏）":"")+'</span>'
+    + ' <span class="chip'+(filt.hideSub?"":" on")+'" id="fSub" title="委派子代理会话（dsh 每次委派各落一个目录、openclaw 首问带 [Subagent Context]；侧栏默认隐藏；同步默认排除）">🤖 子代理'+(nSub?"×"+nSub:"")+(filt.hideSub?"（隐藏）":"")+'</span>'
     + ' <input type="date" id="fFrom" value="'+esc(filt.from)+'" title="最后活跃 ≥"> ~ '
     + '<input type="date" id="fTo" value="'+esc(filt.to)+'" title="创建 ≤">'
     + ' <input type="text" id="fQ" placeholder="标题 / id 关键词" value="'+esc(filt.q)+'">'
@@ -313,13 +530,15 @@ function drawTable(){
   const tEl = document.getElementById("fT"); if(tEl) tEl.textContent = nTrashed ? "（含回收站 "+nTrashed+" 条，已排除同步）" : "";
   if(!rows.length){ box.innerHTML = '<div class="hint">该筛选下无会话</div>'; return; }
   box.innerHTML = '<table><thead><tr><th>源</th><th>标题</th><th>创建时间</th><th>最后活动</th>'
-    + '<th>轮数</th><th>消息</th><th>工具调用</th></tr></thead><tbody>'
-    + rows.map(m =>
-      '<tr class="row'+(m.trashed?" trashed":"")+(m.subagent?" subrow":"")+'" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
-      + "<td>"+(m.trashed?'<span class="badge" style="background:#6b7280" title="源侧已归档/删除，已排除同步">🗑</span> ':"")+(m.subagent?'<span class="badge" style="background:#8b5cf6" title="origin=subagent 委派会话（默认不同步）">🤖</span> ':"")+badge(m.source)+"</td>"
+    + '<th>轮数</th><th>消息</th><th>工具调用</th><th>导出</th></tr></thead><tbody>'
+    + rows.map(m => {
+      const xu = "/api/export?source="+encodeURIComponent(m.source)+"&id="+encodeURIComponent(m.id)+"&fmt=";
+      return '<tr class="row'+(m.trashed?" trashed":"")+(m.subagent?" subrow":"")+(m.imported?" improw":"")+'" data-href="#/session/'+m.source+"/"+encodeURIComponent(m.id)+'">'
+      + "<td>"+(m.trashed?'<span class="badge" style="background:#6b7280" title="源侧已归档/删除，已排除同步">🗑</span> ':"")+(m.subagent?'<span class="badge" style="background:#8b5cf6" title="origin=subagent 委派会话（默认不同步）">🤖</span> ':"")+(m.imported?'<span class="badge" style="background:#f59e0b" title="agentsync 导入（其他 agent 会话副本，同步默认排除）">📥</span> ':"")+badge(m.source)+"</td>"
       + "<td>"+esc((m.title||"(无标题)").slice(0,60))+"</td>"
       + "<td>"+fmt(m.created_at)+"</td><td>"+fmt(m.updated_at)+"</td>"
-      + "<td>"+m.turns+"</td><td>"+m.messages+"</td><td>"+m.tools+"</td></tr>").join("")
+      + "<td>"+m.turns+"</td><td>"+m.messages+"</td><td>"+m.tools+"</td>"
+      + '<td><a class="xbtn" href="'+xu+'md" onclick="event.stopPropagation()" title="导出 Markdown（人读）">md</a><a class="xbtn" href="'+xu+'ir" onclick="event.stopPropagation()" title="导出 IR JSON（C 库同构，可 push 回写）">ir</a></td></tr>';}).join("")
     + "</tbody></table>";
   box.querySelectorAll("tr.row").forEach(r => r.onclick = () => { location.hash = r.dataset.href; });
 }
@@ -337,14 +556,17 @@ async function renderDetail(src, id){
   const times = (d.turns||[]).map(t => t.time||0).filter(Boolean);
   const tmin = times.length ? Math.min(...times) : 0;
   const tmax = times.length ? Math.max(...times) : 0;
+  const xu = "/api/export?source="+encodeURIComponent(src)+"&id="+encodeURIComponent(id)+"&fmt=";
   let html = '<div class="hd">'+badge(d.source)
     + (d.subagent?' <span class="badge" style="background:#8b5cf6" title="origin=subagent 委派会话（默认不同步）">🤖 子代理</span>':"")
-    + '<div class="t">'+esc(d.title||"(无标题)")+"</div>"
+    + (d.imported?' <span class="badge" style="background:#f59e0b" title="agentsync 导入（其他 agent 会话副本，同步默认排除）">📥 导入</span>':"")
+    + '<div class="t"'+(d.imported?' style="color:#f59e0b" title="📥 agentsync 导入会话"':"")+'>'+esc(d.title||"(无标题)")+"</div>"
     + '<div class="kv">cwd：<b>'+esc(d.cwd||"-")+'</b></div>'
     + '<div class="kv">跨度：<b>'+fmt(d.created_at)+" ~ "+fmt(d.updated_at||tmax)+'</b>'
     + " · <b>"+(d.turns||[]).length+"</b> 轮</div>"
     + '<div class="kv mono">id：'+esc(d.source_id)+'</div>'
     + (d.source_path?'<div class="kv mono">源文件：'+esc(d.source_path)+"</div>":"")
+    + '<div class="kv">导出：<a class="xbtn" style="padding:1px 8px" href="'+xu+'md">⬇ Markdown（人读）</a><a class="xbtn" style="padding:1px 8px" href="'+xu+'ir">⬇ IR JSON（C 库同构，可 push 回写）</a></div>'
     + "</div>";
 
   /* 轮次时间条：压平 bug 一眼可见 */

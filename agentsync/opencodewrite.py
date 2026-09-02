@@ -407,6 +407,21 @@ def apply_write(plan: dict) -> str:
             feed.append((mid, data, ms, plist))
         _write_events(cur, s, slug, project_id, feed, now_ms, emit_created=(plan["action"] == "create"))
         con.commit()
+        _register_import(plan["path"], sid)
         return f"{plan['action']} {len(plan['messages'])} messages -> {plan['path']} ({sid[:12]})"
     finally:
         con.close()
+
+
+def _register_import(db_path: str, sid: str) -> None:
+    """防回流旁路清单：数据根 .agentsync-imports.json 登记铸出的会话 id。
+    opencode 桌面版原生 id 也是 uuidv5，读取器无法按形状判别导入，只能靠此清单。"""
+    import agentsync.readers as _readers
+
+    mf = os.path.join(os.path.dirname(os.path.abspath(db_path)), ".agentsync-imports.json")
+    ids = _readers._oc_import_ids(db_path)
+    if sid in ids:
+        return
+    ids.add(sid)
+    with open(mf, "w", encoding="utf-8") as f:
+        json.dump({"ids": sorted(ids)}, f, ensure_ascii=False, indent=1)

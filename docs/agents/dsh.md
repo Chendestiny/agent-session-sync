@@ -127,6 +127,10 @@ session/imported(ignorable) → user/message 环境声明(source.kind=plugin，U
   归档，被归档的会话侧栏不渲染——与挂载/投影完全独立。若删除后以**相同 id 复活**
   （幂等导入的天然行为），id 仍在归档列表 → 「复活即隐身」（数据四层全对但 UI 不显示）。
   prune/手动删除已同步清理归档记录；复活历史归档会话需手工从该列表移除 id。
+  读取侧（2026-09-01 起）：`read_dsh` 默认排除名单内会话（对齐 zcode/hermes 归档不同步；
+  `include_archived=True` 放出，webui 展示与 `prune --pick` 用之）；webui 卡片 🗑 数、
+  行级标记、名单本身三处同口径。历史删除会留**死 id**（指向已删目录），需完全退出
+  dsh 后清理（先备份）。
 - **`session_projcache.json` 是侧栏标题的数据源**（dsh-session-projection-cache 的
   cachedSnapshot 零 IO 列表读）：正常只在会话被打开/adopt 时回填，直接落盘的导入会话
   没有条目 → 列表回退显示工作区名，点开后才有标题。`attach-dsh` 现在会同步回填

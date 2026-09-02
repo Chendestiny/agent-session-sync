@@ -6,6 +6,8 @@
 |---|---|---|
 | [agents/dsh.md](agents/dsh.md) | DeepSeek Harness | 多帧 zstd 事件日志 + workspace.json 分组挂载 |
 | [agents/zcode.md](agents/zcode.md) | zcode | db.sqlite 三表（session/message/part），opencode 同族（读取源；写入器已弃用存档） |
+| [agents/qoder.md](agents/qoder.md) | qoder | 任务索引 vscdb + conversation-history JSONL 两跳（读取源；文件名=id 截 8 位） |
+| [agents/openclaw.md](agents/openclaw.md) | openclaw | sessions JSONL + reset 孤儿快照（读取源；toolResult 独立行配对） |
 | [agents/hermes.md](agents/hermes.md) | hermes | state.db 两表，OpenAI chat 风格，单库不分区 |
 | [agents/codex.md](agents/codex.md) | codex CLI | rollout JSONL（session_meta/response_item/turn_context） |
 | [agents/workbuddy.md](agents/workbuddy.md) | WorkBuddy | 元数据 db + projects/<slug>/JSONL 双层（reader 已实现；写入配方备而未用） |

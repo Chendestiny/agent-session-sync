@@ -5,7 +5,7 @@ description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent
 
 # 跨 Agent 会话同步（session-sync）
 
-本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / claude / opencode 七家会话，
+本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / claude / opencode / qoder / openclaw / cursor / trae 十一家会话，
 写入 dsh（可续聊），并支持 Markdown 归档。
 **详细操作手册见同目录 `AGENTS.md`**（cookbook、安全铁律、故障排查、格式文档地图），
 格式深度规格见 `docs/FORMATS.md`。以下是要点。
@@ -71,6 +71,8 @@ python sync.py archive --source all --apply            # Markdown 归档到 ./ar
 python sync.py prune                                   # 清理孤儿/打招呼会话（--apply 前退出 dsh，移入 ~/.trash-dsh 可恢复）
 python sync.py verify                                  # 校验已导入 dsh 会话的事件纪律
 python sync.py selftest                                # 沙箱端到端自检
+python sync.py regtest                                 # 真库矩阵回归 dry-run（源×目标逐格探针计划）
+python sync.py regtest --apply                         # 同上执行（退出全部目标应用；写1条+幂等+读回+防回环拦截验证）
 tools/verify-dsh-backend.cmd                           # dsh 原生后端强校验（Node 22）
 ```
 
@@ -107,7 +109,14 @@ all 或 inc 首跑=历史全量，`--apply` 需交互 y/N 或非交互 `--confir
 - 极长会话建议 `--budget`（如 200000），否则 dsh resume 时可能超上下文。
 - 环境依赖：Python 3.10+ 与 `zstandard`；Node 22（`nvm use 22`）仅 dsh 原生后端校验需要。
 - dsh 源默认排除 origin=subagent 子代理会话（每次委派各落一个目录，侧栏隐藏；对齐 zcode/codex
-  过滤口径）；dashboard 展示口径含它们并带 🤖 徽章。
+  过滤口径）；openclaw 子代理靠首问 [Subagent Context] 标记同样默认排除；dashboard 展示口径
+  含它们并带 🤖 徽章。
+- 归档会话默认排除同步：zcode/hermes/workbuddy 的 UI 归档 + dsh workspace.json 的
+  archivedSessionIds 软删名单，reader 层默认不返回（归档=已不要，不再外流）；
+  webui 展示与 prune --pick 用 include_archived=True 仍可见（🗑 徽章，卡片/行级/名单同口径）。
+- 导入会话不回流（防环）：codex/claude/hermes/workbuddy 铸的 sessionId 是 uuid5（原生非 v5），
+  reader 层按版本位默认跳过；opencode 桌面版原生也是 uuidv5，改旁路清单 .agentsync-imports.json；
+  dsh 默认排除 import-*（副本不当源，防二次成环）；审计/展示口径 include_imports=True（webui 📥 徽章）。
 - zcode 永不写入（两连败定论：全量=超上下文黑屏；裁剪版也黑屏且无上下文——v2 注册表
   协同所致）。要带上下文进 zcode：`archive --source dsh --session <id>` 导出 Markdown
   让用户贴进新会话（项目级用 local/zcode-交接摘要.md 模式）。

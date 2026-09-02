@@ -1,7 +1,7 @@
 r"""写入 Claude Code CLI（~/.claude/projects/<转义目录>/<sessionId>.jsonl）。
 
 目录转义规则（本机 16 个真实目录实证）：cwd 中每个不属于 [A-Za-z0-9-] 的字符
-都替换为 '-'（`C:\Users\neware` → `C--Users-neware`，`tmp.xxx` → `tmp-xxx`，
+都替换为 '-'（`C:\Users\alice` → `C--Users-alice`，`tmp.xxx` → `tmp-xxx`，
 盘符大小写保留）。会话行内自带 cwd 字段，目录只是分桶。
 
 行形状与真实会话对齐（读取器 `read_claude` 同口径）：
