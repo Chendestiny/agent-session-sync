@@ -34,7 +34,7 @@ python sync.py attach-dsh --apply
 
 python sync.py archive  --source all --apply   # Markdown archive → ./archive
 python sync.py verify                          # validate imported sessions
-python sync.py serve                           # read-only web dashboard: timeline / session list / per-turn times (auto-opens 127.0.0.1:8321)
+python sync.py web                            # web dashboard: timeline / session list / per-turn times (auto-opens 127.0.0.1:8321)
 python sync.py prune --pick --hard                           # interactive slim-down: list all dsh sessions (keyword filter), pick by number, delete outright (quit dsh first)
 python sync.py prune --session "title-or-id-substring" --hard --apply   # delete named sessions outright (dry-run first; --older-than N; --native to also pick native ones)
 tools\verify-dsh-backend.cmd                   # strong check via dsh's own backend (Node 22)
@@ -59,7 +59,7 @@ tools\verify-dsh-backend.cmd                   # strong check via dsh's own back
 **Option 1 · global command:**
 
 ```bash
-session-sync serve              # auto-opens the browser at 127.0.0.1:8321 (--port to change, Ctrl+C to stop)
+session-sync web               # auto-opens the browser at 127.0.0.1:8321 (--port to change, Ctrl+C to stop)
 ```
 
 **Option 2 · from source** (no skill install / fresh clone):
@@ -67,7 +67,7 @@ session-sync serve              # auto-opens the browser at 127.0.0.1:8321 (--po
 ```bash
 git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-sync
 pip install zstandard           # the only third-party dep (for reading the dsh source)
-python sync.py serve
+python sync.py web
 ```
 
 | View | What you see |
@@ -151,7 +151,7 @@ opencode project context …) are fixed in code — full breakdown in
 
 See the Chinese README's 目录结构 section, or explore the tree directly:
 `AGENTS.md` (manual) · `SKILL.md` (skill bundle) · `sync.py` (CLI) · `agentsync/` (library, incl.
-`webui/` read-only dashboard served by `sync.py serve`) ·
+`webui/` web dashboard served by `sync.py web`) ·
 `docs/FORMATS.md` + `docs/agents/*.md` (deep format specs per agent) · `examples/` · `tools/`.
 
 ## 🔒 Safety Boundaries

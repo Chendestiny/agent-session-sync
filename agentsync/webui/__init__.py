@@ -1,6 +1,7 @@
-"""Web dashboard：python sync.py serve → http://127.0.0.1:8321
+"""Web dashboard：python sync.py web → http://127.0.0.1:8321
 
-- 浏览/导出下载（GET）；写操作走 sync.py CLI，页面无写端点（POST 一律 405），实时读源无缓存
+- 浏览/导出下载（GET）；写操作走 sync.py CLI，页面写端点仅目录绑定族（POST /api/bind-path、
+  /api/pick-folder），其余 405；实时读源无缓存
 - 仅绑定 127.0.0.1；页面为包内 index.html（单文件、无构建、离线可用）
 """
 from __future__ import annotations

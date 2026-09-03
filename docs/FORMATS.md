@@ -41,9 +41,10 @@ block = {"type":"text"|"reasoning","text"} | {"type":"tool-call","id","name","ar
 - **L2 整体**：保留开头锚点（默认 3 轮）+ 压缩摘要（reasoning 块）+ 尾部贪心装填；
 - **L3 兜底**：裁剪后单条仍超预算一半即丢弃（首轮 prompt 永不丢）。
 
-## 只读 Web dashboard（agentsync/webui/，`sync.py serve`）
+## Web dashboard（agentsync/webui/，`sync.py web`）
 
-`python sync.py serve` → 127.0.0.1:8321（`--port` 可改）自动开浏览器；**零写端点**（POST 一律 405）、
+`python sync.py web` → 127.0.0.1:8321（`--port` 可改）自动开浏览器；**写端点仅目录绑定族**
+（POST /api/bind-path、/api/pick-folder，其余 POST 405）、
 实时读源无缓存、页面单文件离线可用。端点契约：
 
 | 端点 | 返回 |

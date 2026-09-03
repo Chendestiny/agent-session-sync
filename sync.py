@@ -104,7 +104,7 @@ def _resolve_scope(args) -> dict:
     sys.exit(confirm.NONINTERACTIVE_HELP)
 
 
-def cmd_serve(args):
+def cmd_web(args):
     from agentsync import webui
 
     webui.serve(port=args.port, open_browser=not args.no_open)
@@ -1376,10 +1376,10 @@ def main():
     s.add_argument("-v", "--verbose", action="store_true")
     s.set_defaults(fn=cmd_status)
 
-    s = sub.add_parser("serve", help="只读 Web dashboard（127.0.0.1，浏览器可视化 7 家源 + C 库）")
+    s = sub.add_parser("web", help="可视化 Web dashboard（127.0.0.1，浏览器看十一家源 + C 库）")
     s.add_argument("--port", type=int, default=8321, help="监听端口（默认 8321）")
     s.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
-    s.set_defaults(fn=cmd_serve)
+    s.set_defaults(fn=cmd_web)
 
     for sink, fn, root_help in (
         ("to-dsh", cmd_to_dsh, "覆盖 dsh sessions 根目录"),
@@ -1786,7 +1786,7 @@ def cmd_regtest(args):
           f"拦截格 {sum(1 for r in rows if r[2] == 'guard')}），FAIL {n_fail}")
     if args.apply:
         print("后续：dsh 侧挂分组需完全退出 dsh 后 `python sync.py attach-dsh --apply`；"
-              "`python sync.py serve` 浏览器核对各目标「导入 N」。")
+              "`python sync.py web` 浏览器核对各目标「导入 N」。")
     if n_fail:
         sys.exit(1)
 

@@ -49,7 +49,7 @@ Linux / macOS / WSL：
 **方式一 · 全局命令**：
 
 ```bash
-session-sync serve              # 自动开浏览器 127.0.0.1:8321（--port 可改，Ctrl+C 停）
+ass web                        # 快捷命令（= session-sync web）自动开浏览器 127.0.0.1:8321（--port 可改，Ctrl+C 停）
 ```
 
 **方式二 · 从源码跑**（没装 skill / 刚 clone）：
@@ -57,7 +57,7 @@ session-sync serve              # 自动开浏览器 127.0.0.1:8321（--port 可
 ```bash
 git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-sync
 pip install zstandard           # 唯一第三方依赖（读 dsh 源用；其余源纯标准库）
-python sync.py serve
+python sync.py web
 ```
 
 | 视图 | 看什么 |
@@ -128,7 +128,7 @@ python sync.py archive  --source all --apply   # Markdown 归档 → ./archive
 python sync.py verify                          # 校验已导入 dsh 会话
 python sync.py regtest                         # 真库矩阵回归 dry-run：源×写目标逐格探针计划（11读6写闭环体检）
 python sync.py regtest --apply                 # 同上执行（退出全部目标应用）：每格写1条+幂等复跑+读回+自家→自家拦截验证
-python sync.py serve                           # 可视化 dashboard：总览时间轴/会话列表/轮次时间条（浏览器自动开 127.0.0.1:8321）
+python sync.py web                            # 可视化 dashboard：总览时间轴/会话列表/轮次时间条（浏览器自动开 127.0.0.1:8321）
 python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
 python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
 python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
@@ -197,7 +197,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档
   validate.py           dsh 事件纪律校验
-  webui/                只读 Web dashboard（serve → 127.0.0.1:8321；零写端点，页面随包离线可用）
+  webui/                Web dashboard（web 子命令 → 127.0.0.1:8321；POST 仅目录绑定族例外，页面随包离线可用）
 🗂️ archive/             归档输出
 📚 reference/dsh-chat-import/  参考仓库源码
 .test-dsh-root/ .test-zcode-db.sqlite   测试产物（可删）

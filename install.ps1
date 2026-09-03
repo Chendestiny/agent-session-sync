@@ -86,13 +86,15 @@ foreach ($item in $bundle) {
     }
 }
 
-Write-Host '[3/4] Install global command: session-sync ...'
+Write-Host '[3/4] Install global commands: session-sync / ass ...'
 $binDir = Join-Path $HOME '.agents\bin'
 New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 $cmdBody = "@echo off`r`npython `"%USERPROFILE%\.agents\skills\session-sync\sync.py`" %*`r`n"
-[System.IO.File]::WriteAllText((Join-Path $binDir 'session-sync.cmd'), $cmdBody)
-$shBody = "#!/bin/sh`nexec python `"`$HOME/.agents/skills/session-sync/sync.py`" `"`$@`"`n"
-[System.IO.File]::WriteAllText((Join-Path $binDir 'session-sync'), $shBody)
+$shBody = "#!/bin/sh`nexec python `"`$HOME/.agents/skills/session-sync/sync.py`" `"$@`"`n"
+foreach ($n in 'session-sync', 'ass') {
+    [System.IO.File]::WriteAllText((Join-Path $binDir "$n.cmd"), $cmdBody)
+    [System.IO.File]::WriteAllText((Join-Path $binDir $n), $shBody)
+}
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $hit = @($userPath -split ';' | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $binDir.TrimEnd('\') })
 if ($hit.Count -eq 0) {
@@ -100,7 +102,7 @@ if ($hit.Count -eq 0) {
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
     Write-Host "      Added $binDir to user PATH (takes effect in NEW terminals)"
 }
-Write-Host '      Run  session-sync serve  from anywhere (dashboard);  session-sync status  etc. all work'
+Write-Host '      Run  ass web  (or session-sync web) from anywhere (dashboard);  ass status  etc. all work'
 
 Write-Host '[4/4] Environment check ...'
 try { python --version | Write-Host } catch { Write-Host '  [!] python not found, please install Python 3.10+' }
@@ -113,7 +115,7 @@ Remove-Item $zip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host 'Install done!'
 Write-Host ("  Location: {0}" -f $dest)
-Write-Host '  Global:   session-sync serve   (dashboard, any directory; new terminals)'
+Write-Host '  Global:   ass web  /  session-sync web   (dashboard, any directory; new terminals)'
 Write-Host '  Self-test: cd there and run  python sync.py selftest'
 Write-Host '  Trigger: tell any agent "sync sessions to dsh"'
 Write-Host '  Note: to-zcode direction is removed (one-way design); exit dsh before attach/prune'

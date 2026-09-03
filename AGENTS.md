@@ -44,7 +44,7 @@ python sync.py attach-dsh --apply                                           # �
 | 任务 | 命令 |
 |---|---|
 | 看各 agent 源概览 | `python sync.py status` |
-| 只读可视化 dashboard（给人看） | `python sync.py serve`（浏览器自动开 127.0.0.1:8321，`--port` 可改；三视图：总览 9 泳道时间轴/会话列表筛选/轮次时间条下钻；行级/详情可导出——`⬇ md`（人读 Markdown）与 `⬇ ir`（C 库同构 IR JSON，拷进 ~/.session-sync 即可 push 回写）；📥=agentsync 导入（列表/详情标题黄）、🤖=子代理、🗑=回收站徽章；源卡 stat 统一「导入 X + 原生 Y」；源卡标签可点——`可导出` 弹窗勾选会话整源下载（md/jsonl，原生口径），`可写入` 弹「让 agent 代跑」提示词可复制，`⚙`/「未找到·点击绑定」弹目录绑定（粘绝对路径，后端校验结构，存 ~/.session-sync/paths.json 优先于自动探测，空=解绑）；POST 仅此一个例外端点、其余 405、仅绑 127.0.0.1、实时读源无缓存。用户想看会话全景/排查时间分布时起给他；agent 自己分析数据不需要它。install 脚本装过后任意目录可直接 `session-sync serve`） |
+| 只读可视化 dashboard（给人看） | `python sync.py web`（浏览器自动开 127.0.0.1:8321，`--port` 可改；三视图：总览 9 泳道时间轴/会话列表筛选/轮次时间条下钻；行级/详情可导出——`⬇ md`（人读 Markdown）与 `⬇ ir`（C 库同构 IR JSON，拷进 ~/.session-sync 即可 push 回写）；📥=agentsync 导入（列表/详情标题黄）、🤖=子代理、🗑=回收站徽章；源卡 stat 统一「导入 X + 原生 Y」；源卡标签可点——`可导出` 弹窗勾选会话整源下载（md/jsonl，原生口径），`可写入` 弹「让 agent 代跑」提示词可复制，`⚙`/「未找到·点击绑定」弹目录绑定（粘绝对路径，后端校验结构，存 ~/.session-sync/paths.json 优先于自动探测，空=解绑）；POST 仅此一个例外端点、其余 405、仅绑 127.0.0.1、实时读源无缓存。用户想看会话全景/排查时间分布时起给他；agent 自己分析数据不需要它。install 脚本装过后任意目录可直接 `session-sync web`，快捷 `ass web`） |
 | 把某条会话带进 zcode 续聊（zcode 不可写库） | `python sync.py archive --source dsh --session <id子串> --apply` 导出单会话 Markdown → 用户贴进 zcode 新会话（上下文靠文档传递；项目级用 `local/zcode-交接摘要.md` 模式） |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
 | 反向写入 codex / claude code / hermes / opencode / workbuddy | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy}write.py；zcode 不可写）。**六目标已实测全通**（每家的可见性坑都已固化修复：codex 需登记 state_N.sqlite threads 索引、hermes 需计数列、opencode 需 path 列+对齐默认项目上下文） |
@@ -59,7 +59,7 @@ python sync.py attach-dsh --apply                                           # �
 | 清理孤儿/测试会话 | **退出 dsh 后** `python sync.py prune --apply`（dry-run 先看；孤儿=源已删的导入，junk=纯打招呼/冒烟；移入 `~/.trash-dsh` 可恢复，manifest.jsonl 有明细） |
 | 校验已导入的 dsh 会话 | `python sync.py verify` |
 | 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（先弹两道确认→prune+导入+挂载+校验；`--sources zcode --scope 7d` 参数即确认）；`--check` 只读预览 |
-| 矩阵回归（真库读写闭环） | `python sync.py regtest`（dry-run 看计划）→ **退出全部目标应用**后 `python sync.py regtest --apply`。每格自动选该源「最新且已稳定」会话当探针（10 分钟内仍在更新的跳过），五步验证：缺基准先预置到探针时刻-1ms → 审计探针在增量候选 → 走 to-X 同一代码路径精准写 1 条 → 复跑验幂等 → 含导入口径读回；自家→自家格验证防回环拦截。`--sources`/`--targets` 缩圈；跑完 `serve` 核对各目标「导入 N」 |
+| 矩阵回归（真库读写闭环） | `python sync.py regtest`（dry-run 看计划）→ **退出全部目标应用**后 `python sync.py regtest --apply`。每格自动选该源「最新且已稳定」会话当探针（10 分钟内仍在更新的跳过），五步验证：缺基准先预置到探针时刻-1ms → 审计探针在增量候选 → 走 to-X 同一代码路径精准写 1 条 → 复跑验幂等 → 含导入口径读回；自家→自家格验证防回环拦截。`--sources`/`--targets` 缩圈；跑完 `web` 核对各目标「导入 N」 |
 | dsh 原生后端强校验 | `tools\verify-dsh-backend.cmd`（Node 22） |
 
 **同步语义**：幂等（重复跑自动去重）；增量（源会话长了再跑 `to-dsh` 只追加新轮次；
