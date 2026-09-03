@@ -104,7 +104,39 @@ if ($hit.Count -eq 0) {
 }
 Write-Host '      Run  ass web  (or session-sync web) from anywhere (dashboard);  ass status  etc. all work'
 
-Write-Host '[4/4] Environment check ...'
+Write-Host '[4/5] Bridge skill into per-agent skills dirs (junction -> single source) ...'
+# Each agent keeps its own skills dir and most do NOT read the common ~/.agents/skills.
+# For every detected per-agent skills dir, create a junction pointing back to the single
+# source, so one update is visible to all agents. Only existing dirs are bridged.
+$bridgeCandidates = @(
+    (Join-Path $HOME '.workbuddy\skills'),      (Join-Path $HOME '.workbuddy\.agent\skills'),
+    (Join-Path $HOME '.workbuddy-ai\skills'),   (Join-Path $HOME '.workbuddy-ai\.agent\skills'),
+    (Join-Path $HOME '.claude\skills'),
+    (Join-Path $HOME '.codex\skills'),
+    (Join-Path $HOME '.hermes\skills'),
+    (Join-Path $HOME '.dsh\skills'),
+    (Join-Path $HOME '.qoder\skills'),
+    (Join-Path $HOME '.config\opencode\skill'),
+    (Join-Path $HOME '.config\opencode\skills')
+)
+foreach ($d in $bridgeCandidates) {
+    if (-not (Test-Path $d)) { continue }
+    $link = Join-Path $d 'session-sync'
+    if (Test-Path $link) {
+        if (Get-Item $link -Force | Where-Object { $_.LinkType }) {
+            # Delete the junction itself only: Remove-Item -Recurse on PS5.1 may
+            # traverse INTO the target and wipe the single source.
+            [System.IO.Directory]::Delete($link)
+        } else {
+            Write-Host "      [!] real directory exists, skipped (delete it and reinstall to bridge): $link"
+            continue
+        }
+    }
+    New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
+    Write-Host "      bridged: $link -> $dest"
+}
+
+Write-Host '[5/5] Environment check ...'
 try { python --version | Write-Host } catch { Write-Host '  [!] python not found, please install Python 3.10+' }
 try {
     python -c "import zstandard" 2>$null

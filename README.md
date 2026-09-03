@@ -32,6 +32,12 @@ Linux / macOS / WSL：
 
 > WSL/Linux 下自动只发现**该系统内**安装的 agent（如 `~/.codex`、`~/.dsh`）；
 > zcode / hermes / workbuddy 装在 Windows 侧的，请在 Windows 上跑同步。
+>
+> **skills 目录自动桥接**：各 agent 只扫自家 skills 目录（如 `~/.workbuddy/skills`、
+> `~/.claude/skills`、`~/.codex/skills`、`~/.hermes/skills`、`~/.dsh/skills`），大多不认通用位
+> `~/.agents/skills`。安装脚本会在每个检测到的自家 skills 目录里放一个指向唯一源
+> `~/.agents/skills/session-sync` 的 junction/symlink——单一源、全家电齐、升级改一处生效
+> （桥接后需重启对应 agent 才会重新扫描）。
 
 ### ▶️ 执行同步（装完对 agent 说一句）
 安装脚本（含下面的离线办法）会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：

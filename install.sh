@@ -110,7 +110,25 @@ case ":$PATH:" in
 esac
 echo "      任意目录可用：ass web（快捷）或 session-sync web（dashboard）等"
 
-step '4/4' '环境检查 ...'
+step '4/5' '桥接各 agent skills 目录（symlink -> 唯一源）...'
+# 各家 skills 目录不统一（通用位 ~/.agents/skills 只有部分 agent 认）：检测到即桥接，改一处全家生效
+for d in "$HOME/.workbuddy/skills" "$HOME/.workbuddy/.agent/skills" \
+         "$HOME/.workbuddy-ai/skills" "$HOME/.workbuddy-ai/.agent/skills" \
+         "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.hermes/skills" \
+         "$HOME/.dsh/skills" "$HOME/.qoder/skills" \
+         "$HOME/.config/opencode/skill" "$HOME/.config/opencode/skills"; do
+    [ -d "$d" ] || continue
+    link="$d/session-sync"
+    if [ -L "$link" ]; then
+        rm -f "$link"
+    elif [ -e "$link" ]; then
+        echo "  [!] 已存在实体目录，跳过（如需统一可删除后重装）：$link"
+        continue
+    fi
+    ln -sfn "$DEST" "$link" && echo "      bridged: $link -> $DEST"
+done
+
+step '5/5' '环境检查 ...'
 if [ -n "$PY" ]; then
     "$PY" --version
     "$PY" -c 'import zstandard' 2>/dev/null \
