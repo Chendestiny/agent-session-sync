@@ -37,6 +37,13 @@ def _slugify(title: str) -> str:
     return s[:60] or "imported"
 
 
+def _prefixed_title(source: str, title: str) -> str:
+    """导入标记（对齐 dshwrite 的 [source] 前缀）：在 opencode 自家 UI 一眼区分来源；已有前缀不重复加。"""
+    if title and not (title.startswith("[") and "] " in title[:14]):
+        title = f"[{source}] {title}"
+    return title
+
+
 def _norm_dir(d: str) -> str:
     return (d or "").replace("\\", "/").rstrip("/").lower()
 
@@ -246,7 +253,8 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
             "project_id": _resolve_project(cur, directory),
             "slug": None,  # apply 时做唯一性处理
             "directory": directory,
-            "title": (sess.title or "").strip() or (turns[0].prompt[:40] if turns else ""),
+            "title": _prefixed_title(sess.source,
+                                    (sess.title or "").strip() or (turns[0].prompt[:40] if turns else "")),
             "time_created": created or None,
             "time_updated": (sess.updated_at or created or None),
         }

@@ -119,6 +119,13 @@ def _turn_events(sid: str, cwd: str, turn, idx: int, base_ms: int) -> list[dict]
     return ev
 
 
+def _prefixed_title(source: str, title: str) -> str:
+    """导入标记（对齐 dshwrite 的 [source] 前缀）：在 WorkBuddy 自家 UI 一眼区分来源；已有前缀不重复加。"""
+    if title and not (title.startswith("[") and "] " in title[:14]):
+        title = f"[{source}] {title}"
+    return title
+
+
 def plan_write(wb_home: str, sess: Session, budget: int | None, force: bool = False, titles: dict | None = None) -> dict:
     """workbuddy 版写入计划：create / append / up-to-date / skip / skip-deleted。"""
     wb_home = str(wb_home)
@@ -135,7 +142,8 @@ def plan_write(wb_home: str, sess: Session, budget: int | None, force: bool = Fa
     }
     plan = {"path": path, "db": os.path.join(wb_home, "workbuddy.db"), "sid": sid,
             "cwd": cwd, "events": [], "stats": stats, "trimmed": trimmed, "sourceTurns": len(turns),
-            "title": (sess.title or "").strip() or (turns[0].prompt[:40] if turns else ""),
+            "title": _prefixed_title(sess.source,
+                                     (sess.title or "").strip() or (turns[0].prompt[:40] if turns else "")),
             "model": sess.model, "created": created, "updated": sess.updated_at or created}
     if not turns:
         return {**plan, "action": "skip", "reason": "无可导入轮次"}
