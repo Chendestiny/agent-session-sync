@@ -1298,6 +1298,8 @@ def cmd_selftest(args):
         check(bool(hit and len(hit.turns) == 1), "restore 读回：内容与轮数保真")
         plan_bad = backup_mod.plan_restore("claude", "not-a-ts", fake_p, target="zcode")
         check(not plan_bad.get("ok"), "restore：只读目标拒绝")
+        rows_none = backup_mod.do_backup(["claude"], fake_p, ids={"no-such-id"})
+        check(rows_none[0]["count"] == 0, "backup ids=：点名未命中快照 0 条")
 
         # 9.3c prune --hard 端到端：点名删除沙箱导入 → sessions API 立即反映（原 9.3 延续）
         # 整源导出：口径=原生（排除导入副本/子代理/归档）；md 合并单文件、jsonl 一行一会话
@@ -1506,6 +1508,7 @@ def main():
     s.add_argument("--source", default="", help="all 或逗号组合（11 家）")
     s.add_argument("--scope", default="all", help="all(默认) | 7d | 30d | 任意Nd")
     s.add_argument("--with-imports", action="store_true", help="含导入会话（默认只备原生）")
+    s.add_argument("--session", default=None, help="点名会话（源ID子串，逗号分隔多个）——与 webui 勾选清单同款")
     s.add_argument("--list", action="store_true", help="列已有快照")
     s.set_defaults(fn=cmd_backup)
 
@@ -2032,9 +2035,16 @@ def cmd_backup(args):
         return
     which = _parse_sources(args.source or "all", ALL_SOURCES)
     days = _backup_scope_days(args.scope)
+    ids = None
+    if args.session:
+        wanted = {w.strip() for w in args.session.split(",") if w.strip()}
+        ids = backup_mod.expand_ids(which, p, wanted)
+        if not ids:
+            sys.exit(f"--session 未命中任何会话：{sorted(wanted)}")
     label = "原生" if not args.with_imports else "原生+导入"
-    print(f"备份口径：{label} · 范围={'全部' if days is None else f'最近 {days} 天'}")
-    rows = backup_mod.do_backup(which, p, days=days, with_imports=args.with_imports)
+    print(f"备份口径：{label} · 范围={'全部' if days is None else f'最近 {days} 天'}"
+          + (f" · 点名 {len(ids)} 条" if ids is not None else ""))
+    rows = backup_mod.do_backup(which, p, days=days, with_imports=args.with_imports, ids=ids)
     for r in rows:
         print(f"  [{r['source']:9}] 快照 {r['ts']}：{r['count']} 条会话，{r['size_kb']} KB → {r['dir']}")
     print("\n查看/还原：python sync.py backup --list · python sync.py restore --source <源> --ts <时间戳> [--apply]")

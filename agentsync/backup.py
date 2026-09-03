@@ -60,8 +60,20 @@ def _writers():
     }
 
 
-def do_backup(sources: list[str], p, days: int | None = None, with_imports: bool = False) -> list[dict]:
-    """打快照：每源一个时间戳目录，返回摘要。days=None 表示不限日期。"""
+def expand_ids(sources: list[str], p, wanted: set[str]) -> set[str]:
+    """把 --session 的子串集合展开成完整会话 id 集合（与 CLI 各处 --session 同语义）。"""
+    out: set[str] = set()
+    for src in sources:
+        for s in _collect(src, p, with_imports=True):
+            if any(w in s.source_id or w in (s.title or "") for w in wanted):
+                out.add(s.source_id)
+    return out
+
+
+def do_backup(sources: list[str], p, days: int | None = None, with_imports: bool = False,
+              ids: set[str] | None = None) -> list[dict]:
+    """打快照：每源一个时间戳目录，返回摘要。days=None 不限日期；ids 非空时只备这些会话
+    （webui 勾选/CLI --session 精确点名）。"""
     ts = time.strftime("%Y%m%d-%H%M%S")
     out = []
     for src in sources:
@@ -69,6 +81,8 @@ def do_backup(sources: list[str], p, days: int | None = None, with_imports: bool
         if days is not None:
             cutoff = (time.time() - days * 86400) * 1000
             sessions = [s for s in sessions if (s.updated_at or s.created_at or 0) >= cutoff]
+        if ids is not None:
+            sessions = [s for s in sessions if s.source_id in ids]
         snap = os.path.join(backup_root(), src, ts)
         sess_dir = os.path.join(snap, "sessions")
         os.makedirs(sess_dir, exist_ok=True)

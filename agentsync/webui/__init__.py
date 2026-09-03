@@ -376,7 +376,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # 参数坏不崩服务
                 return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 400)
         if u.path == "/api/backup":
-            # 备份快照：只写 C 库 backups/（不碰任何 agent 数据），可选口径与日期
+            # 备份快照：只写 C 库 backups/（不碰任何 agent 数据）；口径/勾选清单可选
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
@@ -384,10 +384,10 @@ class Handler(BaseHTTPRequestHandler):
                 src = str(body.get("source", ""))
                 if src not in SOURCES:
                     return self._json({"ok": False, "detail": f"unknown source: {src}"}, 400)
-                days = body.get("days")
+                raw_ids = body.get("ids") or ""
+                ids = {i for i in str(raw_ids).split(",") if i} or None
                 rows = backup_mod.do_backup([src], paths.detect(),
-                                            days=int(days) if days else None,
-                                            with_imports=bool(body.get("with_imports")))
+                                            with_imports=bool(body.get("with_imports")), ids=ids)
                 return self._json({"ok": True, "snapshots": rows})
             except Exception as e:
                 return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 500)

@@ -305,40 +305,76 @@ function openWriteModal(src){
 async function openBackupModal(src){
   let ms = [];
   try{ ms = await cacheGet(src); }catch(e){}
-  const nat = ms.filter(m => !m.subagent && !m.trashed && !m.imported).length;
+  ms = ms.filter(m => !m.subagent && !m.trashed).sort((a,b) => b.updated_at - a.updated_at);
+  const selfOk = WRITABLE.has(src);
+  const tgts = ["dsh","codex","claude","hermes","opencode","workbuddy"];
   openModal(
     '<h3 style="margin:0 0 10px">备份 ' + esc(SRC_CN[src]||src) + '（快照到 C 库 backups/）</h3>'
-    + '<div class="kv">口径：<span class="chipbtn on" data-imp="0">原生（' + nat + '）</span>'
-    + '<span class="chipbtn" data-imp="1">原生+导入（' + ms.filter(m => !m.subagent && !m.trashed).length + '）</span>'
-    + ' · 范围：<span class="chipbtn on bd" data-days="0">全部</span>'
-    + '<span class="chipbtn bd" data-days="7">最近 7 天</span><span class="chipbtn bd" data-days="30">最近 30 天</span></div>'
+    + '<div class="kv">口径：<span class="chipbtn on" data-imp="0">原生</span>'
+    + '<span class="chipbtn" data-imp="1">原生+导入</span></div>'
+    + '<div class="kv" style="margin-top:6px">会话（可手动勾选）：<span class="chipbtn on bkd" data-days="0">全部</span>'
+    + '<span class="chipbtn bkd" data-days="7">最近 7 天</span><span class="chipbtn bkd" data-days="30">最近 30 天</span>'
+    + ' <span id="bkcount" style="color:var(--dim);font-size:12px"></span></div>'
+    + '<div class="xlist" id="bklist"></div>'
     + '<button class="mbtn" id="bgo">📦 立即备份</button>'
-    + '<div class="hint" style="margin:8px 0">快照=会话 IR（与 C 库同构）落到 ~/.session-sync/backups/，不碰源数据、不推进增量水位；还原走幂等写入，已存在自动跳过。</div>'
-    + '<div class="kv" style="margin-top:6px">已有快照：</div><div class="xlist" id="blist">加载中…</div>'
+    + '<div class="hint" style="margin:8px 0">快照=会话 IR 落 ~/.session-sync/backups/，不碰源数据、不推进增量水位。</div>'
+    + '<div class="kv">已有快照（还原走幂等写入，已存在自动跳过）：</div><div class="xlist" id="bsnaps">加载中…</div>'
     + '<button class="mbtn ghost" id="bclose" style="margin-top:8px">关闭</button>'
   );
-  let withImports = 0, days = 0;
+  const list = document.getElementById("bklist");
+  let withImports = 0;
+  const count = () => {
+    const all = list.querySelectorAll("input").length;
+    const n = list.querySelectorAll("input:checked").length;
+    document.getElementById("bkcount").textContent = "已选 " + n + " / " + all;
+    return n;
+  };
+  const render = () => {
+    const pool = withImports ? ms : ms.filter(m => !m.imported);
+    list.innerHTML = pool.length
+      ? pool.map(m => '<label class="xitem"><input type="checkbox" checked value="'+esc(m.id)+'">'
+          + '<span class="xt" title="'+esc(m.title||m.id)+'">'+esc((m.title||"(无标题)").slice(0,60))
+          + (m.imported ? ' <span style="color:#f59e0b" title="导入副本">📥</span>' : '') + '</span>'
+          + '<span class="xd">'+esc(fmtShort(m.updated_at))+'</span></label>').join("")
+      : '<div class="hint">（该口径下无会话）</div>';
+    count();
+  };
+  render();
   document.querySelectorAll(".chipbtn[data-imp]").forEach(c => c.onclick = () => {
     document.querySelectorAll(".chipbtn[data-imp]").forEach(x => x.classList.remove("on"));
-    c.classList.add("on"); withImports = Number(c.dataset.imp);
+    c.classList.add("on"); withImports = Number(c.dataset.imp); render();
   });
-  document.querySelectorAll(".chipbtn.bd").forEach(c => c.onclick = () => {
-    document.querySelectorAll(".chipbtn.bd").forEach(x => x.classList.remove("on"));
-    c.classList.add("on"); days = Number(c.dataset.days);
+  list.addEventListener("change", () => { count();
+    document.querySelectorAll(".chipbtn.bkd").forEach(c => c.classList.remove("on")); });
+  document.querySelectorAll(".chipbtn.bkd").forEach(c => c.onclick = () => {
+    document.querySelectorAll(".chipbtn.bkd").forEach(x => x.classList.remove("on"));
+    c.classList.add("on");
+    const d = Number(c.dataset.days);
+    const floor = d ? Date.now() - d*864e5 : 0;
+    list.querySelectorAll("input[type=checkbox]").forEach(cb => {
+      const m = ms.find(x => x.id === cb.value);
+      cb.checked = !!m && (!floor || m.updated_at >= floor);
+    });
+    count();
   });
-  const loadList = async () => {
+  const loadSnaps = async () => {
     let rows = [];
     try{ rows = await (await fetch("/api/backups?source=" + encodeURIComponent(src))).json(); }catch(e){}
-    document.getElementById("blist").innerHTML = rows.length
+    document.getElementById("bsnaps").innerHTML = rows.length
       ? rows.map(r => '<label class="xitem"><span class="xt">' + esc(r.ts)
-          + ' · ' + r.count + ' 条 · ' + r.size_kb + ' KB · ' + (r.with_imports ? "原生+导入" : "原生")
-          + ' · ' + (r.days ? r.days + "天" : "全部") + '</span>'
+          + ' · ' + r.count + ' 条 · ' + r.size_kb + ' KB · ' + (r.with_imports ? "原生+导入" : "原生") + '</span>'
+          + '<select class="btgt" data-ts="'+esc(r.ts)+'" title="还原目标" style="flex:none;font-size:12px;padding:2px 4px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px">'
+          + (selfOk ? '' : '<option value="">选择目标…</option>')
+          + tgts.map(t => '<option value="'+t+'"'+(selfOk && t===src ? " selected" : "")+'>'+esc(SRC_CN[t]||t)+'</option>').join("")
+          + '</select>'
           + '<button class="mbtn ghost brst" data-ts="'+esc(r.ts)+'" style="flex:none;padding:2px 10px;font-size:12px">还原</button></label>').join("")
       : '<div class="hint">（暂无快照）</div>';
     document.querySelectorAll(".brst").forEach(b => b.onclick = async () => {
-      const tgt = WRITABLE.has(src) ? src : (src === "zcode" ? "dsh" : "dsh");
+      const sel = document.querySelector('.btgt[data-ts="'+b.dataset.ts+'"]');
+      const tgt = sel ? sel.value : "";
+      if(!tgt){ alert(selfOk ? "请先选择还原目标" : (SRC_CN[src]||src) + " 不可写（只读源），请先选择还原目标"); return; }
       if(!confirm("还原 " + (SRC_CN[src]||src) + "@" + b.dataset.ts + " → " + (SRC_CN[tgt]||tgt)
-        + "？\n· 走幂等写入：已存在的会话自动跳过，只补缺\n· " + (["hermes","opencode","workbuddy","dsh"].includes(tgt) ? "请先完全退出 " + (SRC_CN[tgt]||tgt) : "建议先退出相关应用") + "\n· 只读源（如 zcode）默认还原进 dsh")) return;
+        + "？\n· 走幂等写入：已存在的会话自动跳过，只补缺\n· 请先完全退出 " + (SRC_CN[tgt]||tgt))) return;
       b.disabled = true; b.textContent = "还原中…";
       try{
         const r = await (await fetch("/api/restore", {method:"POST", headers:{"Content-Type":"application/json"},
@@ -349,17 +385,19 @@ async function openBackupModal(src){
       b.disabled = false; b.textContent = "还原";
     });
   };
-  loadList();
+  loadSnaps();
   document.getElementById("bgo").onclick = async () => {
+    const ids = Array.from(list.querySelectorAll("input:checked")).map(cb => cb.value);
+    if(!ids.length){ alert("请至少勾选一条会话"); return; }
     const btn = document.getElementById("bgo");
     btn.disabled = true; btn.textContent = "备份中…";
     try{
       const r = await (await fetch("/api/backup", {method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({source: src, days: days || null, with_imports: !!withImports})})).json();
+        body: JSON.stringify({source: src, with_imports: !!withImports, ids: ids.join(",")})})).json();
       alert(r.ok ? ("快照完成：" + r.snapshots[0].count + " 条 · " + r.snapshots[0].size_kb + " KB") : ("失败：" + r.detail));
     }catch(e){ alert("失败：" + e); }
     btn.disabled = false; btn.textContent = "📦 立即备份";
-    loadList();
+    loadSnaps();
   };
   document.getElementById("bclose").onclick = closeModal;
 }
