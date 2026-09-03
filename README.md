@@ -118,6 +118,7 @@ cd "<项目目录>"
 pip install zstandard        # Python 侧唯一第三方依赖
 nvm use 22                   # node 相关校验用（可选）
 
+python sync.py doctor                         # 一键体检+自修复：依赖自动装/自检/存储探测/基准健康/skills 桥接/shim 补齐
 python sync.py selftest                        # 沙箱自检：全绿再动真数据
 python sync.py status                          # 各 agent 源概览
 python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
@@ -189,7 +190,7 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 ⌨️ sync.py              CLI 入口（status/serve/to-dsh/attach-dsh/archive/verify/selftest）
 titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-dsh --force --titles 重写）
 📐 docs/FORMATS.md      格式总览 + 归一化 IR + 索引
-🔬 docs/agents/         各家会话结构详解（深度规格分册）
+🔬 docs/agents/         各家会话结构详解（深度规格分册，一家一册）
   dsh.md  zcode.md  hermes.md  codex.md  workbuddy.md
 📑 examples/            真实示例：命令输出转录 + 转换实例（含再生成方法）
 🛠️ tools/

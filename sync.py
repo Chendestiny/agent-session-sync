@@ -1462,6 +1462,10 @@ def main():
     s.add_argument("--budget", type=int, default=550000, help="上下文 token 预算（默认 550000）")
     s.set_defaults(fn=cmd_regtest)
 
+    s = sub.add_parser("doctor",
+                       help="一键体检+自修复：zstandard 自动装/selftest/存储探测/增量基准/skills 桥接+shim 补齐（不动会话数据）")
+    s.set_defaults(fn=cmd_doctor)
+
     ns = ap.parse_args()
     ns.fn(ns)
 
@@ -1788,6 +1792,162 @@ def cmd_regtest(args):
         print("后续：dsh 侧挂分组需完全退出 dsh 后 `python sync.py attach-dsh --apply`；"
               "`python sync.py web` 浏览器核对各目标「导入 N」。")
     if n_fail:
+        sys.exit(1)
+
+
+def _is_reparse_point(path: str) -> bool:
+    """Windows：junction/reparse 点判定（os.path.islink 对 junction 不敏感）。"""
+    try:
+        st = os.lstat(path)
+        return bool(getattr(st, "st_file_attributes", 0) & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+    except OSError:
+        return False
+
+
+def _make_dir_link(link: str, target: str) -> bool:
+    """建目录链接（Win 用 junction 免管理员；其他平台 symlink）。"""
+    import subprocess as _sp
+
+    try:
+        if os.name == "nt":
+            r = _sp.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True)
+            return r.returncode == 0
+        os.symlink(target, link)
+        return True
+    except OSError:
+        return False
+
+
+def cmd_doctor(args):
+    """一键体检+自修复（不动任何会话数据）：
+    ① Python 版本 ② zstandard 缺失自动 pip 安装 ③ 沙箱 selftest
+    ④ 存储探测（11 源，未安装=信息不算病） ⑤ 增量基准损坏自动备份重建
+    ⑥ dsh 导入校验（BAD 给修复命令，不代写） ⑦ skills 桥接 + 全局 shim 缺/坏自动补。
+    """
+    import shutil
+    import subprocess
+
+    fixes: list[str] = []
+    warns: list[str] = []
+
+    print("[1/7] Python 版本 ...")
+    if sys.version_info >= (3, 10):
+        print(f"  ✔ {sys.version.split()[0]}")
+    else:
+        warns.append(f"Python {sys.version.split()[0]} < 3.10，请升级")
+
+    print("[2/7] zstandard 依赖 ...")
+    try:
+        import zstandard  # noqa: F401
+        print("  ✔ 已安装")
+    except ImportError:
+        print("  缺失 → 尝试自动安装 ...")
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "zstandard"],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            fixes.append("已自动安装 zstandard")
+        else:
+            warns.append("zstandard 自动安装失败，请手动：pip install zstandard")
+
+    print("[3/7] 沙箱 selftest（不碰真实数据）...")
+    r = subprocess.run([sys.executable, os.path.abspath(__file__), "selftest"],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and "SELFTEST PASSED" in (r.stdout or ""):
+        print("  ✔ SELFTEST PASSED")
+    else:
+        warns.append("selftest 未通过，输出尾部：" + " | ".join((r.stdout or "").strip().splitlines()[-3:]))
+
+    print("[4/7] 存储探测（11 源）...")
+    p = paths.detect()
+    fields = [("zcode", p.zcode_db), ("hermes", p.hermes_db), ("dsh", p.dsh_sessions),
+              ("codex", p.codex_sessions), ("workbuddy", p.workbuddy_home),
+              ("claude", p.claude_projects), ("opencode", p.opencode_db), ("qoder", p.qoder_home),
+              ("openclaw", p.openclaw_home), ("cursor", p.cursor_global_db), ("trae", p.trae_global_db)]
+    found = [n for n, v in fields if v]
+    print(f"  探测到 {len(found)}/11：{' '.join(found) or '（无）'}（未装的只是不可读，不算病）")
+
+    print("[5/7] 增量基准健康（6 写目标）...")
+    import time as _t
+    ts = _t.strftime("%Y%m%d-%H%M%S")
+    for tgt, (get_store, _w) in _regtest_writers().items():
+        store = get_store(p)
+        if not store:
+            continue
+        root = str(store)
+        s_root = root if os.path.isdir(root) else os.path.dirname(root)
+        spath = syncstate.state_path(s_root)
+        if os.path.exists(spath) and os.path.getsize(spath) > 0 and not syncstate.load(s_root):
+            shutil.copy2(spath, spath + f".doctor-bak-{ts}")
+            os.remove(spath)
+            fixes.append(f"{tgt} 增量基准损坏，已备份重建（下次同步重新建立水位）")
+            print(f"  [修复] {tgt} 基准文件损坏 → 已备份重建")
+    print("  ✔ 其余目标基准正常或尚未建立")
+
+    print("[6/7] dsh 导入会话校验 ...")
+    if p.dsh_sessions:
+        r = subprocess.run([sys.executable, os.path.abspath(__file__), "verify"],
+                           capture_output=True, text=True)
+        tail = [ln for ln in (r.stdout or "").strip().splitlines() if ln.startswith("校验")]
+        print(f"  {tail[-1] if tail else '无输出'}")
+        for ln in (r.stdout or "").splitlines():
+            if ln.startswith("  [BAD"):
+                warns.append(f"dsh 导入校验 BAD：{ln.strip()}（修复：to-dsh --force 整体重写后重启 dsh）")
+    else:
+        print("  （未装 dsh，跳过）")
+
+    print("[7/7] skills 桥接 + 全局 shim ...")
+    skill_dir = os.path.dirname(os.path.abspath(__file__))
+    home = os.path.expanduser("~")
+    cands = [os.path.join(home, *pp) for pp in (
+        (".workbuddy", "skills"), (".workbuddy", ".agent", "skills"),
+        (".workbuddy-ai", "skills"), (".workbuddy-ai", ".agent", "skills"),
+        (".claude", "skills"), (".codex", "skills"), (".hermes", "skills"),
+        (".dsh", "skills"), (".qoder", "skills"),
+        (".config", "opencode", "skill"), (".config", "opencode", "skills"))]
+    for d in cands:
+        if not os.path.isdir(d):
+            continue
+        link = os.path.join(d, "session-sync")
+        if os.path.islink(link) or _is_reparse_point(link):
+            if os.path.exists(os.path.join(link, "sync.py")):
+                continue  # 桥接健康
+            os.remove(link) if os.path.islink(link) else os.rmdir(link)  # 失效链接先清
+        elif os.path.exists(link):
+            warns.append(f"桥接位被实体目录占用，跳过：{link}")
+            continue
+        if _make_dir_link(link, skill_dir):
+            fixes.append(f"重建 skills 桥接：{link}")
+            print(f"  [修复] 桥接 {link}")
+        else:
+            warns.append(f"桥接失败，手动：mklink /J \"{link}\" \"{skill_dir}\"")
+    skill_posix = skill_dir.replace(os.sep, "/")
+    if os.name == "nt":
+        bin_dir = os.path.join(home, ".agents", "bin")
+        py = "python"
+        cmd_body = f'@echo off\r\n{py} "{skill_dir}\\sync.py" %*\r\n'
+        sh_body = f'#!/bin/sh\nexec {py} "{skill_posix}/sync.py" "$@"\n'
+    else:
+        bin_dir = os.path.join(home, ".local", "bin")
+        cmd_body = None
+        sh_body = f'#!/bin/sh\nexec python3 "{skill_posix}/sync.py" "$@"\n'
+    os.makedirs(bin_dir, exist_ok=True)
+    for n in ("session-sync", "ass"):
+        sh_path = os.path.join(bin_dir, n)
+        if not os.path.exists(sh_path):
+            open(sh_path, "w", encoding="utf-8", newline="").write(sh_body)
+            fixes.append(f"补全局命令：{sh_path}")
+        if cmd_body and not os.path.exists(sh_path + ".cmd"):
+            open(sh_path + ".cmd", "w", encoding="utf-8", newline="").write(cmd_body)
+            fixes.append(f"补全局命令：{sh_path}.cmd")
+    if bin_dir not in os.environ.get("PATH", "").split(os.pathsep):
+        warns.append(f"{bin_dir} 不在当前 PATH（新终端可能才生效；仍缺则手动加入）")
+
+    print(f"\n== 体检完成：修复 {len(fixes)} 项 · 警告 {len(warns)} 项 ==")
+    for f in fixes:
+        print(f"  [fixed] {f}")
+    for w in warns:
+        print(f"  [warn ] {w}")
+    if warns:
         sys.exit(1)
 
 

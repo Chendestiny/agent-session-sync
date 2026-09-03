@@ -71,6 +71,7 @@ python sync.py archive --source all --apply            # Markdown 归档到 ./ar
 python sync.py prune                                   # 清理孤儿/打招呼会话（--apply 前退出 dsh，移入 ~/.trash-dsh 可恢复）
 python sync.py verify                                  # 校验已导入 dsh 会话的事件纪律
 python sync.py selftest                                # 沙箱端到端自检
+python sync.py doctor                                  # 一键体检+自修复（依赖/自检/存储/基准/桥接/shim，不动会话数据）
 python sync.py regtest                                 # 真库矩阵回归 dry-run（源×目标逐格探针计划）
 python sync.py regtest --apply                         # 同上执行（退出全部目标应用；写1条+幂等+读回+防回环拦截验证）
 tools/verify-dsh-backend.cmd                           # dsh 原生后端强校验（Node 22）

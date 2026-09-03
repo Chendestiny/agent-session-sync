@@ -59,6 +59,7 @@ python sync.py attach-dsh --apply                                           # �
 | 清理孤儿/测试会话 | **退出 dsh 后** `python sync.py prune --apply`（dry-run 先看；孤儿=源已删的导入，junk=纯打招呼/冒烟；移入 `~/.trash-dsh` 可恢复，manifest.jsonl 有明细） |
 | 校验已导入的 dsh 会话 | `python sync.py verify` |
 | 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（先弹两道确认→prune+导入+挂载+校验；`--sources zcode --scope 7d` 参数即确认）；`--check` 只读预览 |
+| 一键体检+自修复 | `python sync.py doctor`：zstandard 缺失自动装 → selftest → 存储探测 → 增量基准损坏备份重建 → dsh 导入校验（BAD 给修复命令不代写）→ skills 桥接/全局 shim 缺坏自动补。全程不动会话数据，有警告退出码 1 |
 | 矩阵回归（真库读写闭环） | `python sync.py regtest`（dry-run 看计划）→ **退出全部目标应用**后 `python sync.py regtest --apply`。每格自动选该源「最新且已稳定」会话当探针（10 分钟内仍在更新的跳过），五步验证：缺基准先预置到探针时刻-1ms → 审计探针在增量候选 → 走 to-X 同一代码路径精准写 1 条 → 复跑验幂等 → 含导入口径读回；自家→自家格验证防回环拦截。`--sources`/`--targets` 缩圈；跑完 `web` 核对各目标「导入 N」 |
 | dsh 原生后端强校验 | `tools\verify-dsh-backend.cmd`（Node 22） |
 
@@ -109,7 +110,7 @@ dsh 默认排除 `import-*` 会话（副本在 dsh，正主在原生源，当源
 | `docs/pitfalls.md` | **踩坑总录**（按家分组，全部已修进代码；排障先查这里） |
 | `docs/agents/dsh.md` | dsh 深度规格：多帧 zstd、事件纪律、目录编码、workspace.json 分组挂载 |
 | `docs/agents/qoder.md` | Qoder 深度规格：任务索引 vscdb + conversation-history 两跳、文件名截 8 位（读取源） |
-| `docs/agents/openclaw.md` | OpenClaw 深度规格：reset 快照孤儿读取、toolResult 行配对（读取源） |
+| `docs/agents/openclaw.md` | OpenClaw 深度规格：reset 快照孤儿读取、toolResult 行配对、新旧双版本兼容（读取源） |
 | `docs/agents/cursor.md` | Cursor 深度规格：globalStorage cursorDiskKV（composer+bubble 键前缀关联）、@路径标题剥离（读取源） |
 | `docs/agents/trae.md` | Trae 深度规格：布局对齐 Cursor、本机 Trae CN 残留空壳、待实机核验（读取源） |
 | `docs/agents/zcode.md` | zcode 深度规格：三表结构、message/part 模板、project_id（读取源；写入器已弃用存档） |
