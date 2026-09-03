@@ -60,7 +60,7 @@ python sync.py attach-dsh --apply                                           # �
 | 校验已导入的 dsh 会话 | `python sync.py verify` |
 | 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（先弹两道确认→prune+导入+挂载+校验；`--sources zcode --scope 7d` 参数即确认）；`--check` 只读预览 |
 | 一键体检+自修复 | `python sync.py doctor`：zstandard 缺失自动装 → selftest → 存储探测 → 增量基准损坏备份重建 → dsh 导入校验（BAD 给修复命令不代写）→ skills 桥接/全局 shim 缺坏自动补。全程不动会话数据，有警告退出码 1 |
-| 会话备份/还原 | `python sync.py backup [--source all] [--scope 7d\|30d\|all] [--with-imports] [--session 子串] [--list]`：按口径（默认原生）与日期/点名快照会话 IR 到 C 库 `backups/<源>/<时间戳>/`，不碰源数据、不推进增量水位；`python sync.py restore --source <源> --ts <戳> [--target dsh...] [--apply]` 幂等写回（默认目标=源本身，只读源须 `--target`）。webui 卡片「备份」tag 同款（口径/日期 chips + 会话勾选清单 + 快照行选目标还原——只读源不静默兜底，必须显式选目标） |
+| 会话备份/还原 | `python sync.py backup [--source all] [--scope 7d\|30d\|all] [--with-imports] [--session 子串] [--list] [--source X --ts Y --delete]`：按口径（默认原生）与日期/点名快照会话 IR 到 C 库 `backups/<源>/<时间戳>/`，不碰源数据、不推进增量水位；`restore --source <源> --ts <戳> [--target] [--apply]` 幂等写回（默认目标=源本身，只读源须 `--target`）。webui：各源卡片「备份」tag（口径/日期 chips+会话勾选+快照行选目标还原）；**C 库卡片「备份」tag=全源快照总览**（源徽章+磁盘路径+还原+删除） |
 | 矩阵回归（真库读写闭环） | `python sync.py regtest`（dry-run 看计划）→ **退出全部目标应用**后 `python sync.py regtest --apply`。每格自动选该源「最新且已稳定」会话当探针（10 分钟内仍在更新的跳过），五步验证：缺基准先预置到探针时刻-1ms → 审计探针在增量候选 → 走 to-X 同一代码路径精准写 1 条 → 复跑验幂等 → 含导入口径读回；自家→自家格验证防回环拦截。`--sources`/`--targets` 缩圈；跑完 `web` 核对各目标「导入 N」 |
 | dsh 原生后端强校验 | `tools\verify-dsh-backend.cmd`（Node 22） |
 
