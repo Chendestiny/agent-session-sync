@@ -406,7 +406,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(r, 200 if r.get("ok") else 500)
             except Exception as e:
                 return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 500)
-        self._json({"error": "POST 不支持（例外端点：目录绑定 /api/bind-path、备份 /api/backup、还原 /api/restore；其余写操作走 sync.py CLI）"}, 405)
+        if u.path == "/api/backup-del":
+            # 删除快照目录：只动 C 库 backups/（不碰任何 agent 数据）
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                from .. import backup as backup_mod
+                out = backup_mod.delete_snapshot(str(body.get("source", "")), str(body.get("ts", "")))
+                return self._json(out, 200 if out.get("ok") else 400)
+            except Exception as e:
+                return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
+        self._json({"error": "POST 不支持（例外端点：目录绑定 /api/bind-path、备份 /api/backup、还原 /api/restore、删快照 /api/backup-del；其余写操作走 sync.py CLI）"}, 405)
 
     def log_message(self, fmt, *args) -> None:
         print(f"  [webui] {self.address_string()} {fmt % args}")

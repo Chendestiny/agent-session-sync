@@ -302,12 +302,69 @@ function openWriteModal(src){
   );
   document.getElementById("wcopy").onclick = function(){ copyText(p, this); };
 }
+const BK_TGTS = ["dsh","codex","claude","hermes","opencode","workbuddy"];
+function renderSnapList(el, rows, withSource){
+  el.innerHTML = rows.length
+    ? rows.map(r => {
+        const selfOk = WRITABLE.has(r.source);
+        return '<div class="xitem" style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;cursor:default">'
+          + (withSource ? '<span class="badge" style="background:'+COLORS[r.source]+';flex:none">'+esc(SRC_CN[r.source]||r.source)+'</span>' : '')
+          + '<span class="xt" style="flex:1;min-width:0">' + esc(r.ts)
+          + ' · ' + r.count + ' 条 · ' + r.size_kb + ' KB · ' + (r.with_imports ? "原生+导入" : "原生") + '</span>'
+          + '<select class="btgt" data-src="'+esc(r.source)+'" data-ts="'+esc(r.ts)+'" title="还原目标" style="flex:none;font-size:12px;padding:2px 4px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px">'
+          + (selfOk ? '' : '<option value="">选择目标…</option>')
+          + BK_TGTS.map(t => '<option value="'+t+'"'+(selfOk && t===r.source ? " selected" : "")+'>'+esc(SRC_CN[t]||t)+'</option>').join("")
+          + '</select>'
+          + '<button class="mbtn ghost brst" data-src="'+esc(r.source)+'" data-ts="'+esc(r.ts)+'" style="flex:none;padding:2px 10px;font-size:12px">还原</button>'
+          + '<button class="mbtn ghost bdel" data-src="'+esc(r.source)+'" data-ts="'+esc(r.ts)+'" title="删除快照目录（不可恢复）" style="flex:none;padding:2px 10px;font-size:12px;color:#ef4444;border-color:#ef4444">删</button>'
+          + '<span title="'+esc(r.dir)+'" style="flex:1 1 100%;color:var(--dim);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📁 '+esc(r.dir)+'</span></div>';
+      }).join("")
+    : '<div class="hint">（暂无快照）</div>';
+  el.querySelectorAll(".brst").forEach(b => b.onclick = async () => {
+    const src = b.dataset.src, ts = b.dataset.ts;
+    const sel = el.querySelector('.btgt[data-ts="'+ts+'"][data-src="'+src+'"]');
+    const tgt = sel ? sel.value : "";
+    if(!tgt){ alert(WRITABLE.has(src) ? "请先选择还原目标" : (SRC_CN[src]||src) + " 不可写（只读源），请先选择还原目标"); return; }
+    if(!confirm("还原 " + (SRC_CN[src]||src) + "@" + ts + " → " + (SRC_CN[tgt]||tgt)
+      + "？\n· 走幂等写入：已存在的会话自动跳过，只补缺\n· 请先完全退出 " + (SRC_CN[tgt]||tgt))) return;
+    b.disabled = true; b.textContent = "还原中…";
+    try{
+      const r = await (await fetch("/api/restore", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({source: src, ts: ts, target: tgt})})).json();
+      alert(r.ok ? ("还原完成：写入 " + r.written + " · 幂等跳过 " + r.skipped + " · 失败 " + r.failed
+        + (r.target === "dsh" ? "\n（dsh 侧挂分组：退出 dsh 后 attach-dsh）" : "")) : ("失败：" + (r.error || r.detail)));
+    }catch(e){ alert("失败：" + e); }
+    b.disabled = false; b.textContent = "还原";
+  });
+  el.querySelectorAll(".bdel").forEach(b => b.onclick = async () => {
+    const src = b.dataset.src, ts = b.dataset.ts;
+    if(!confirm("删除快照 " + (SRC_CN[src]||src) + "@" + ts + "？\n· 整个快照目录从磁盘移除，不可恢复\n· 只动 C 库 backups/，不碰任何 agent 数据")) return;
+    b.disabled = true;
+    try{
+      const r = await (await fetch("/api/backup-del", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({source: src, ts: ts})})).json();
+      if(r.ok){ b.closest(".xitem").style.opacity = .35; b.disabled = true; }
+      else alert("失败：" + (r.error || r.detail));
+    }catch(e){ alert("失败：" + e); }
+  });
+}
+async function fetchSnaps(src){
+  try{ return await (await fetch("/api/backups" + (src ? "?source=" + encodeURIComponent(src) : ""))).json(); }catch(e){ return []; }
+}
+async function openCBackupModal(){
+  openModal(
+    '<h3 style="margin:0 0 10px">📦 备份快照总览（C 库 backups/）</h3>'
+    + '<div class="hint">全部快照存放于 <b>~/.session-sync/backups/&lt;源&gt;/&lt;时间戳&gt;/</b>；还原=幂等写入需选目标（只读源必须显式选）；删除=目录级移除不可恢复。备份入口在各源卡片「备份」tag。</div>'
+    + '<div class="xlist" id="cbsnaps">加载中…</div>'
+    + '<button class="mbtn ghost" id="cbclose" style="margin-top:8px">关闭</button>'
+  );
+  renderSnapList(document.getElementById("cbsnaps"), await fetchSnaps(null), true);
+  document.getElementById("cbclose").onclick = closeModal;
+}
 async function openBackupModal(src){
   let ms = [];
   try{ ms = await cacheGet(src); }catch(e){}
   ms = ms.filter(m => !m.subagent && !m.trashed).sort((a,b) => b.updated_at - a.updated_at);
-  const selfOk = WRITABLE.has(src);
-  const tgts = ["dsh","codex","claude","hermes","opencode","workbuddy"];
   openModal(
     '<h3 style="margin:0 0 10px">备份 ' + esc(SRC_CN[src]||src) + '（快照到 C 库 backups/）</h3>'
     + '<div class="kv">口径：<span class="chipbtn on" data-imp="0">原生</span>'
@@ -358,32 +415,7 @@ async function openBackupModal(src){
     count();
   });
   const loadSnaps = async () => {
-    let rows = [];
-    try{ rows = await (await fetch("/api/backups?source=" + encodeURIComponent(src))).json(); }catch(e){}
-    document.getElementById("bsnaps").innerHTML = rows.length
-      ? rows.map(r => '<label class="xitem"><span class="xt">' + esc(r.ts)
-          + ' · ' + r.count + ' 条 · ' + r.size_kb + ' KB · ' + (r.with_imports ? "原生+导入" : "原生") + '</span>'
-          + '<select class="btgt" data-ts="'+esc(r.ts)+'" title="还原目标" style="flex:none;font-size:12px;padding:2px 4px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px">'
-          + (selfOk ? '' : '<option value="">选择目标…</option>')
-          + tgts.map(t => '<option value="'+t+'"'+(selfOk && t===src ? " selected" : "")+'>'+esc(SRC_CN[t]||t)+'</option>').join("")
-          + '</select>'
-          + '<button class="mbtn ghost brst" data-ts="'+esc(r.ts)+'" style="flex:none;padding:2px 10px;font-size:12px">还原</button></label>').join("")
-      : '<div class="hint">（暂无快照）</div>';
-    document.querySelectorAll(".brst").forEach(b => b.onclick = async () => {
-      const sel = document.querySelector('.btgt[data-ts="'+b.dataset.ts+'"]');
-      const tgt = sel ? sel.value : "";
-      if(!tgt){ alert(selfOk ? "请先选择还原目标" : (SRC_CN[src]||src) + " 不可写（只读源），请先选择还原目标"); return; }
-      if(!confirm("还原 " + (SRC_CN[src]||src) + "@" + b.dataset.ts + " → " + (SRC_CN[tgt]||tgt)
-        + "？\n· 走幂等写入：已存在的会话自动跳过，只补缺\n· 请先完全退出 " + (SRC_CN[tgt]||tgt))) return;
-      b.disabled = true; b.textContent = "还原中…";
-      try{
-        const r = await (await fetch("/api/restore", {method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({source: src, ts: b.dataset.ts, target: tgt})})).json();
-        alert(r.ok ? ("还原完成：写入 " + r.written + " · 幂等跳过 " + r.skipped + " · 失败 " + r.failed
-          + (r.target === "dsh" ? "\n（dsh 侧挂分组：退出 dsh 后 attach-dsh）" : "")) : ("失败：" + (r.error || r.detail)));
-      }catch(e){ alert("失败：" + e); }
-      b.disabled = false; b.textContent = "还原";
-    });
+    renderSnapList(document.getElementById("bsnaps"), await fetchSnaps(src), false);
   };
   loadSnaps();
   document.getElementById("bgo").onclick = async () => {
@@ -512,14 +544,16 @@ async function renderOverview(){
     const counts = Object.entries(st.counts||{}).map(([k,v])=>k+" "+v).join(" · ")||"（空）";
     const pull = Object.entries(st.state||{}).map(([k,v])=>k+" "+fmtShort(v)).join(" · ");
     const push = Object.entries(st.push||{}).map(([t,m])=>t+"（"+Object.entries(m).map(([k,v])=>k+" "+fmtShort(v)).join(" · ")+"）").join("；");
-    cEl.innerHTML = '<div class="src">📦 C 规范库</div>'
+    cEl.innerHTML = '<div class="src">📦 C 规范库 <span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div>'
       + '<div class="path">'+esc(st.dir)+'</div>'
       + '<div class="kv">会话：<b>'+esc(counts)+'</b></div>'
       + (pull?'<div class="kv">pull 基准：'+esc(pull)+'</div>':"")
       + (push?'<div class="kv">push 水位：'+esc(push)+'</div>':"");
   }else{
-    cEl.innerHTML = '<div class="src">📦 C 规范库</div><div class="path">尚未创建（先跑 pull）</div>';
+    cEl.innerHTML = '<div class="src">📦 C 规范库 <span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div><div class="path">尚未创建（先跑 pull）</div>';
   }
+  const cbk = cEl.querySelector(".tag.k");
+  if(cbk) cbk.onclick = e => { e.stopPropagation(); openCBackupModal(); };
 
   /* 每源并行拉 metas（走缓存：返回不再重新加载）；单源慢不阻塞别的源 */
   const all = {};

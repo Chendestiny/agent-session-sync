@@ -1509,7 +1509,9 @@ def main():
     s.add_argument("--scope", default="all", help="all(默认) | 7d | 30d | 任意Nd")
     s.add_argument("--with-imports", action="store_true", help="含导入会话（默认只备原生）")
     s.add_argument("--session", default=None, help="点名会话（源ID子串，逗号分隔多个）——与 webui 勾选清单同款")
-    s.add_argument("--list", action="store_true", help="列已有快照")
+    s.add_argument("--list", action="store_true", help="列已有快照（含磁盘路径）")
+    s.add_argument("--ts", default=None, help="配合 --delete：要删的快照时间戳")
+    s.add_argument("--delete", action="store_true", help="删除快照目录（只动 C 库 backups/，不可恢复）")
     s.set_defaults(fn=cmd_backup)
 
     s = sub.add_parser("restore", help="从备份快照幂等还原（默认 dry-run，--apply 落盘；走 to-X 同一写入器）")
@@ -2023,6 +2025,15 @@ def cmd_backup(args):
     from agentsync import backup as backup_mod
 
     p = paths.detect()
+    if args.delete:
+        if not args.source or not args.ts or args.source == "all":
+            sys.exit("删除快照需要 --source <单个源> 与 --ts（backup --list 查看）")
+        from agentsync import backup as backup_mod
+        r = backup_mod.delete_snapshot(args.source, args.ts)
+        if not r.get("ok"):
+            sys.exit(r["error"])
+        print(f"已删除快照：{r['removed']}")
+        return
     if args.list:
         rows = backup_mod.list_snapshots(None if args.source in ("", "all") else args.source)
         for r in rows:
@@ -2030,6 +2041,7 @@ def cmd_backup(args):
             print(f"  [{r['source']:9}] {r['ts']}  {r['count']:3} 条  {r['size_kb']:9.1f} KB  "
                   f"{'原生+导入' if r.get('with_imports') else '原生'}  "
                   f"范围={'全部' if days in (None, 'all') else f'{days}天'}")
+            print(f"              {r['dir']}")
         if not rows:
             print("（暂无快照）")
         return

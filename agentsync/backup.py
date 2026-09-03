@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import time
 
 from . import paths, readers, store
@@ -128,8 +130,20 @@ def list_snapshots(source: str | None = None) -> list[dict]:
                 size = 0
             out.append({"source": src, "ts": ts, "count": m.get("count", 0),
                         "with_imports": m.get("with_imports"), "days": m.get("days"),
-                        "size_kb": round(size / 1024, 1)})
+                        "size_kb": round(size / 1024, 1),
+                        "dir": os.path.abspath(os.path.join(sdir, ts))})
     return out
+
+
+def delete_snapshot(source: str, ts: str) -> dict:
+    """删除一个快照目录（只动 C 库 backups/，目录级不可恢复）。"""
+    if not re.match(r"^[0-9A-Za-z_-]+$", ts or "") or not re.match(r"^[0-9A-Za-z_-]+$", source or ""):
+        return {"ok": False, "error": "非法 source/ts"}
+    path = os.path.join(backup_root(), source, ts)
+    if not os.path.isdir(path):
+        return {"ok": False, "error": f"快照不存在：{path}"}
+    shutil.rmtree(path)
+    return {"ok": True, "removed": path}
 
 
 def plan_restore(source: str, ts: str, p, target: str | None = None, limit: int = 5) -> dict:
