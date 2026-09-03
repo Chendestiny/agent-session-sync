@@ -38,6 +38,10 @@ Linux / macOS / WSL：
 > `~/.agents/skills`。安装脚本会在每个检测到的自家 skills 目录里放一个指向唯一源
 > `~/.agents/skills/session-sync` 的 junction/symlink——单一源、全家电齐、升级改一处生效
 > （桥接后需重启对应 agent 才会重新扫描）。
+>
+> **没有 Python 环境也能装**（Windows）：安装器检测不到可用的 `python` 时，自动下载官方
+> 嵌入式 CPython 到 `~/.agents/py-runtime`（免管理员、不改系统、约 12 MB），装好 pip 与
+> zstandard，shim 直接指向它，并把它加进用户 PATH——agent 里的 `python sync.py` 也能跑。
 
 ### ▶️ 执行同步（装完对 agent 说一句）
 安装脚本（含下面的离线办法）会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：

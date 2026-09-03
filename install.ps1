@@ -22,13 +22,22 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Run a native command with stderr silenced. PS 5.1 under EAP=Stop turns any native stderr
+# line (e.g. pip warnings) into a terminating NativeCommandError; scope EAP=Continue instead.
+function Invoke-QuietNative([string]$Exe, [string[]]$ArgList) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Exe @ArgList 2>&1 | Out-Null } catch { } finally { $ErrorActionPreference = $prev }
+    return $LASTEXITCODE
+}
+
 $dest = Join-Path $HOME '.agents\skills\session-sync'
 $zip = Join-Path $env:TEMP ('ass-' + [guid]::NewGuid().ToString('N') + '.zip')
 $tmpDir = Join-Path $env:TEMP ('ass-' + [guid]::NewGuid().ToString('N'))
 $prefix = [string]$env:ASS_GH_PREFIX
 $url = 'https://github.com/Chendestiny/agent-session-sync/archive/refs/heads/main.zip'
 
-Write-Host '[1/3] Fetch agent-session-sync (main) ...'
+Write-Host '[1/6] Fetch agent-session-sync (main) ...'
 $srcRoot = $null
 if ($Source) {
     if (Test-Path $Source -PathType Leaf) {              # local zip
@@ -65,7 +74,7 @@ if (-not $srcRoot) {
     $srcRoot = $hit.DirectoryName
 }
 
-Write-Host '[2/3] Place into skill directory ...'
+Write-Host '[2/6] Place into skill directory ...'
 if (-not (Test-Path (Split-Path $dest -Parent))) {
     New-Item -ItemType Directory -Path (Split-Path $dest -Parent) -Force | Out-Null
 }
@@ -86,11 +95,71 @@ foreach ($item in $bundle) {
     }
 }
 
-Write-Host '[3/4] Install global commands: session-sync / ass ...'
+Write-Host '[3/6] Python runtime ...'
+# No system python (e.g. user never installed hermes or any py tooling)? Fall back to an
+# embedded CPython under ~/.agents/py-runtime: no admin, no system changes, shims call it
+# directly and it is appended to user PATH so bare `python` works in agent shells too.
+$pyExe = $null
+try { $pyExe = (Get-Command python -ErrorAction SilentlyContinue).Source } catch {}
+if ($pyExe) {
+    if ((Invoke-QuietNative $pyExe @('--version')) -ne 0) { $pyExe = $null }   # WindowsApps store stub
+}
+if (-not $pyExe) {
+    $rt = Join-Path $HOME '.agents\py-runtime'
+    $embedded = Join-Path $rt 'python.exe'
+    if (-not (Test-Path $embedded)) {
+        Write-Host '      python not found - installing embedded CPython (~12 MB, no admin) ...'
+        $pyver = '3.11.9'
+        $pyzip = Join-Path $env:TEMP 'ass-py-embed.zip'
+        $mirrors = @("https://www.python.org/ftp/python/$pyver/python-$pyver-embed-amd64.zip",
+                     "https://registry.npmmirror.com/-/binary/python/$pyver/python-$pyver-embed-amd64.zip")
+        $done = $false
+        foreach ($u in $mirrors) {
+            try { Invoke-WebRequest $u -OutFile $pyzip; $done = $true; break } catch {}
+        }
+        if (-not $done) { throw 'Failed to download embedded Python (python.org and npmmirror both failed)' }
+        New-Item -ItemType Directory -Path $rt -Force | Out-Null
+        Expand-Archive $pyzip -DestinationPath $rt -Force
+        Remove-Item $pyzip -Force -ErrorAction SilentlyContinue
+        $tag = $pyver.Substring(0, $pyver.LastIndexOf('.')).Replace('.', '')   # 3.11.9 -> 311
+        $pth = Join-Path $rt "python$tag`._pth"
+        if (Test-Path $pth) { (Get-Content $pth) -replace '^#\s*import site', 'import site' | Set-Content $pth }
+        $gp = Join-Path $env:TEMP 'ass-get-pip.py'
+        Invoke-WebRequest 'https://bootstrap.pypa.io/get-pip.py' -OutFile $gp
+        if ((Invoke-QuietNative $embedded @($gp, '--no-warn-script-location')) -ne 0) { throw 'get-pip failed inside embedded runtime' }
+        if ((Invoke-QuietNative $embedded @('-m','pip','install','zstandard','--no-warn-script-location')) -ne 0) {
+            if ((Invoke-QuietNative $embedded @('-m','pip','install','zstandard','--no-warn-script-location','-i','https://mirrors.aliyun.com/pypi/simple/')) -ne 0) {
+                Write-Host '      [!] zstandard install into runtime failed; rerun installer or run: ass doctor'
+            }
+        }
+        Remove-Item $gp -Force -ErrorAction SilentlyContinue
+    }
+    $pyExe = $embedded
+    $userPath0 = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (@($userPath0 -split ';' | ForEach-Object { $_.TrimEnd('\') }) -notcontains $rt.TrimEnd('\')) {
+        [Environment]::SetEnvironmentVariable('Path', ($userPath0.TrimEnd(';') + ';' + $rt), 'User')
+        Write-Host "      Added $rt to user PATH (bare 'python' works in NEW terminals)"
+    }
+    Write-Host "      Using embedded runtime: $pyExe"
+} else {
+    Write-Host "      Using system python: $pyExe"
+    # the interpreter we hardcode into shims must be self-sufficient (often an agent venv,
+    # e.g. hermes bundles one - machines without hermes may have no python at all)
+    if ((Invoke-QuietNative $pyExe @('-c','import zstandard')) -ne 0) {
+        if ((Invoke-QuietNative $pyExe @('-m','pip','install','zstandard','--no-warn-script-location')) -eq 0) {
+            Write-Host '      Installed zstandard into the detected python'
+        } else {
+            Write-Host '      [!] zstandard missing in detected python: run  ass doctor  later, or  pip install zstandard'
+        }
+    }
+}
+
+Write-Host '[4/6] Install global commands: session-sync / ass ...'
 $binDir = Join-Path $HOME '.agents\bin'
 New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-$cmdBody = "@echo off`r`npython `"%USERPROFILE%\.agents\skills\session-sync\sync.py`" %*`r`n"
-$shBody = "#!/bin/sh`nexec python `"`$HOME/.agents/skills/session-sync/sync.py`" `"$@`"`n"
+$pyPosix = $pyExe.Replace('\', '/')
+$cmdBody = "@echo off`r`n`"$pyExe`" `"%USERPROFILE%\.agents\skills\session-sync\sync.py`" %*`r`n"
+$shBody = "#!/bin/sh`nexec `"$pyPosix`" `"`$HOME/.agents/skills/session-sync/sync.py`" `"$@`"`n"
 foreach ($n in 'session-sync', 'ass') {
     [System.IO.File]::WriteAllText((Join-Path $binDir "$n.cmd"), $cmdBody)
     [System.IO.File]::WriteAllText((Join-Path $binDir $n), $shBody)
@@ -104,7 +173,7 @@ if ($hit.Count -eq 0) {
 }
 Write-Host '      Run  ass web  (or session-sync web) from anywhere (dashboard);  ass status  etc. all work'
 
-Write-Host '[4/5] Bridge skill into per-agent skills dirs (junction -> single source) ...'
+Write-Host '[5/6] Bridge skill into per-agent skills dirs (junction -> single source) ...'
 # Each agent keeps its own skills dir and most do NOT read the common ~/.agents/skills.
 # For every detected per-agent skills dir, create a junction pointing back to the single
 # source, so one update is visible to all agents. Only existing dirs are bridged.
@@ -136,12 +205,11 @@ foreach ($d in $bridgeCandidates) {
     Write-Host "      bridged: $link -> $dest"
 }
 
-Write-Host '[5/5] Environment check ...'
-try { python --version | Write-Host } catch { Write-Host '  [!] python not found, please install Python 3.10+' }
-try {
-    python -c "import zstandard" 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Host '  [!] zstandard missing: run  pip install zstandard' }
-} catch { Write-Host '  [!] python not found, please install Python 3.10+' }
+Write-Host '[6/6] Environment check ...'
+try { & $pyExe --version | Write-Host } catch { Write-Host '  [!] python runtime broken, rerun installer' }
+if ((Invoke-QuietNative $pyExe @('-c','import zstandard')) -ne 0) {
+    Write-Host '  [!] zstandard missing: run  ass doctor  (auto-installs)'
+}
 Remove-Item $zip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''

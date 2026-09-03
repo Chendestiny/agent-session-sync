@@ -1923,13 +1923,14 @@ def cmd_doctor(args):
     skill_posix = skill_dir.replace(os.sep, "/")
     if os.name == "nt":
         bin_dir = os.path.join(home, ".agents", "bin")
-        py = "python"
-        cmd_body = f'@echo off\r\n{py} "{skill_dir}\\sync.py" %*\r\n'
-        sh_body = f'#!/bin/sh\nexec {py} "{skill_posix}/sync.py" "$@"\n'
+        py = sys.executable  # 用当前解释器重建 shim：无系统 python（嵌入式运行时）也能跑
+        py_posix = py.replace(os.sep, "/")
+        cmd_body = f'@echo off\r\n"{py}" "{skill_dir}\\sync.py" %*\r\n'
+        sh_body = f'#!/bin/sh\nexec "{py_posix}" "{skill_posix}/sync.py" "$@"\n'
     else:
         bin_dir = os.path.join(home, ".local", "bin")
         cmd_body = None
-        sh_body = f'#!/bin/sh\nexec python3 "{skill_posix}/sync.py" "$@"\n'
+        sh_body = f'#!/bin/sh\nexec "{sys.executable}" "{skill_posix}/sync.py" "$@"\n'
     os.makedirs(bin_dir, exist_ok=True)
     for n in ("session-sync", "ass"):
         sh_path = os.path.join(bin_dir, n)

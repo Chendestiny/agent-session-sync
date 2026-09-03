@@ -134,7 +134,7 @@ if [ -n "$PY" ]; then
     "$PY" -c 'import zstandard' 2>/dev/null \
         || echo '  [!] 缺少 zstandard：请执行 pip install zstandard'
 else
-    echo '  [!] 未检测到可用的 Python 3.10+，请先安装'
+    echo '  [!] 未检测到可用的 Python 3.10+：macOS 可 brew install python3，Debian/Ubuntu 可 sudo apt install python3 python3-pip'
 fi
 
 echo ''

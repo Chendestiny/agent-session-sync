@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main
 
 The installer drops the toolkit at `~/.agents/skills/session-sync`, registers global commands (`session-sync` and the short alias `ass`), and bridges the skill into each detected agent's own skills dir (WorkBuddy / Claude Code / codex / hermes / dsh each keep their own — they don't read the common `~/.agents` location).
 
-Requirements: Python 3.10+ · `pip install zstandard` (the only third-party dependency).
+Requirements: Python 3.10+ · `pip install zstandard` (the only third-party dependency). **No Python at all?** On Windows the installer auto-downloads an embedded CPython to `~/.agents/py-runtime` (no admin, ~12 MB) and points everything at it.
 
 ## Quick commands
 
