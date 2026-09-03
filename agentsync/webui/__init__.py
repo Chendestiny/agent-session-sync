@@ -341,6 +341,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if u.path == "/api/backups":
+                from .. import backup as backup_mod
+                return self._json(backup_mod.list_snapshots(qs.get("source") or None))
             self._json({"error": "not found"}, 404)
         except ValueError as e:
             self._json({"error": str(e)}, 400)
@@ -372,7 +375,38 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(out, 200 if out.get("ok") else 400)
             except Exception as e:  # 参数坏不崩服务
                 return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 400)
-        self._json({"error": "POST 不支持（唯一例外：目录绑定 /api/bind-path；其余写操作走 sync.py CLI）"}, 405)
+        if u.path == "/api/backup":
+            # 备份快照：只写 C 库 backups/（不碰任何 agent 数据），可选口径与日期
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                from .. import backup as backup_mod
+                src = str(body.get("source", ""))
+                if src not in SOURCES:
+                    return self._json({"ok": False, "detail": f"unknown source: {src}"}, 400)
+                days = body.get("days")
+                rows = backup_mod.do_backup([src], paths.detect(),
+                                            days=int(days) if days else None,
+                                            with_imports=bool(body.get("with_imports")))
+                return self._json({"ok": True, "snapshots": rows})
+            except Exception as e:
+                return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 500)
+        if u.path == "/api/restore":
+            # 还原：快照 IR → 目标写入器（同 to-X 代码路径，幂等）。要求目标应用已退出。
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                from .. import backup as backup_mod
+                plan = backup_mod.plan_restore(str(body.get("source", "")), str(body.get("ts", "")),
+                                               paths.detect(), target=body.get("target") or None)
+                if not plan.get("ok"):
+                    return self._json(plan, 400)
+                r = backup_mod.do_restore(str(body.get("source", "")), str(body.get("ts", "")),
+                                          paths.detect(), target=body.get("target") or None)
+                return self._json(r, 200 if r.get("ok") else 500)
+            except Exception as e:
+                return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 500)
+        self._json({"error": "POST 不支持（例外端点：目录绑定 /api/bind-path、备份 /api/backup、还原 /api/restore；其余写操作走 sync.py CLI）"}, 405)
 
     def log_message(self, fmt, *args) -> None:
         print(f"  [webui] {self.address_string()} {fmt % args}")

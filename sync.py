@@ -1264,6 +1264,42 @@ def cmd_selftest(args):
               "prune --hard：会话目录确实消失")
         st, metas2 = get("/api/sessions?source=dsh")
         check(st == 200 and metas2 == [], "prune --hard 后 sessions API 为空")
+
+        # 9.3b 备份/还原沙箱往返：假 claude 源 → do_backup 快照到沙箱 C 库 → do_restore 写回沙箱 dsh
+        from agentsync import backup as backup_mod
+        from agentsync.model import Session as _S, Step as _St, Turn as _T
+        from pathlib import Path as _P
+        claude_fixture = os.path.join(box, "claude-proj", "C--t")
+        os.makedirs(claude_fixture, exist_ok=True)
+        sid_bk = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"  # uuid4 形状（非 uuid5，防导入判别误杀）
+        bk_lines = [
+            {"type": "user", "timestamp": "2026-09-03T10:00:00.000Z", "cwd": "C:\\t",
+             "message": {"role": "user", "content": "备份往返问"}},
+            {"type": "assistant", "timestamp": "2026-09-03T10:00:05.000Z",
+             "message": {"role": "assistant", "content": [{"type": "text", "text": "备份往返答"}]}},
+        ]
+        with open(os.path.join(claude_fixture, sid_bk + ".jsonl"), "w", encoding="utf-8") as f:
+            for ln in bk_lines:
+                f.write(json.dumps(ln, ensure_ascii=False) + "\n")
+        fake_p = paths.StorePaths(claude_projects=_P(claude_fixture), dsh_sessions=_P(sb_sessions))
+        rows = backup_mod.do_backup(["claude"], fake_p, days=None, with_imports=False)
+        check(len(rows) == 1 and rows[0]["count"] == 1, "backup：claude 假源快照 1 条")
+        snaps = backup_mod.list_snapshots("claude")
+        check(len(snaps) == 1 and snaps[0]["count"] == 1, "backup --list：清单 1 条快照")
+        plan_r = backup_mod.plan_restore("claude", rows[0]["ts"], fake_p, target="dsh")
+        check(plan_r.get("ok") and plan_r.get("count") == 1, "restore 计划：目标 dsh 命中 1 条")
+        res_r = backup_mod.do_restore("claude", rows[0]["ts"], fake_p, target="dsh")
+        check(res_r.get("ok") and res_r.get("written") == 1, "restore：写入沙箱 dsh 1 条")
+        res_r2 = backup_mod.do_restore("claude", rows[0]["ts"], fake_p, target="dsh")
+        check(res_r2.get("ok") and res_r2.get("written") == 0 and res_r2.get("skipped") == 1,
+              "restore 幂等：复跑全跳过")
+        rb = read_dsh(sb_sessions, include_imports=True)
+        hit = next((s for s in rb if s.turns and s.turns[0].prompt == "备份往返问"), None)
+        check(bool(hit and len(hit.turns) == 1), "restore 读回：内容与轮数保真")
+        plan_bad = backup_mod.plan_restore("claude", "not-a-ts", fake_p, target="zcode")
+        check(not plan_bad.get("ok"), "restore：只读目标拒绝")
+
+        # 9.3c prune --hard 端到端：点名删除沙箱导入 → sessions API 立即反映（原 9.3 延续）
         # 整源导出：口径=原生（排除导入副本/子代理/归档）；md 合并单文件、jsonl 一行一会话
         nat_dir = os.path.join(sandbox_dsh_parent, "sessions", "--sandbox--", "session-native-0001")
         os.makedirs(nat_dir, exist_ok=True)
@@ -1465,6 +1501,20 @@ def main():
     s = sub.add_parser("doctor",
                        help="一键体检+自修复：zstandard 自动装/selftest/存储探测/增量基准/skills 桥接+shim 补齐（不动会话数据）")
     s.set_defaults(fn=cmd_doctor)
+
+    s = sub.add_parser("backup", help="会话快照备份到 C 库 backups/（口径可选：原生/原生+导入 + 日期范围；不推进增量水位）")
+    s.add_argument("--source", default="", help="all 或逗号组合（11 家）")
+    s.add_argument("--scope", default="all", help="all(默认) | 7d | 30d | 任意Nd")
+    s.add_argument("--with-imports", action="store_true", help="含导入会话（默认只备原生）")
+    s.add_argument("--list", action="store_true", help="列已有快照")
+    s.set_defaults(fn=cmd_backup)
+
+    s = sub.add_parser("restore", help="从备份快照幂等还原（默认 dry-run，--apply 落盘；走 to-X 同一写入器）")
+    s.add_argument("--source", default=None, help="快照所属源")
+    s.add_argument("--ts", default=None, help="快照时间戳（backup --list 查看）")
+    s.add_argument("--target", default=None, help="还原目标（默认=源本身；只读源须指定 dsh/codex/claude/hermes/opencode/workbuddy）")
+    s.add_argument("--apply", action="store_true", help="执行写入（默认 dry-run）")
+    s.set_defaults(fn=cmd_restore)
 
     ns = ap.parse_args()
     ns.fn(ns)
@@ -1949,6 +1999,73 @@ def cmd_doctor(args):
     for w in warns:
         print(f"  [warn ] {w}")
     if warns:
+        sys.exit(1)
+
+
+def _backup_scope_days(raw: str):
+    raw = (raw or "all").strip().lower()
+    if raw in ("", "all", "全部"):
+        return None
+    if raw.endswith("d"):
+        raw = raw[:-1]
+    try:
+        return int(raw)
+    except ValueError:
+        sys.exit(f"无法解析 --scope：{raw}（all | 7d | 30d | Nd）")
+
+
+def cmd_backup(args):
+    """会话快照备份到 C 库 backups/：可选口径（原生 / 原生+导入）与日期范围，
+    不推进任何增量水位、不影响 pull/push 语义；webui 卡片「备份」同款能力。"""
+    from agentsync import backup as backup_mod
+
+    p = paths.detect()
+    if args.list:
+        rows = backup_mod.list_snapshots(None if args.source in ("", "all") else args.source)
+        for r in rows:
+            days = r.get("days")
+            print(f"  [{r['source']:9}] {r['ts']}  {r['count']:3} 条  {r['size_kb']:9.1f} KB  "
+                  f"{'原生+导入' if r.get('with_imports') else '原生'}  "
+                  f"范围={'全部' if days in (None, 'all') else f'{days}天'}")
+        if not rows:
+            print("（暂无快照）")
+        return
+    which = _parse_sources(args.source or "all", ALL_SOURCES)
+    days = _backup_scope_days(args.scope)
+    label = "原生" if not args.with_imports else "原生+导入"
+    print(f"备份口径：{label} · 范围={'全部' if days is None else f'最近 {days} 天'}")
+    rows = backup_mod.do_backup(which, p, days=days, with_imports=args.with_imports)
+    for r in rows:
+        print(f"  [{r['source']:9}] 快照 {r['ts']}：{r['count']} 条会话，{r['size_kb']} KB → {r['dir']}")
+    print("\n查看/还原：python sync.py backup --list · python sync.py restore --source <源> --ts <时间戳> [--apply]")
+
+
+def cmd_restore(args):
+    """从备份快照还原：快照 IR → 目标写入器（与 to-X 同一代码路径，幂等）。
+    默认目标=源本身；只读源（zcode 等）必须 --target 指定可写目标。默认 dry-run。"""
+    from agentsync import backup as backup_mod
+
+    if not args.source or not args.ts:
+        sys.exit("需要 --source 与 --ts（用 backup --list 查看已有快照）")
+    p = paths.detect()
+    plan = backup_mod.plan_restore(args.source, args.ts, p, target=args.target, limit=8)
+    if not plan.get("ok"):
+        sys.exit(plan["error"])
+    print(f"快照 {args.source}@{args.ts} → 目标 {plan['target']}：共 {plan['count']} 条")
+    for s in plan["sessions"]:
+        print(f"  {s['id']}  「{(s['title'] or '')[:40]}」")
+    if plan["count"] > len(plan["sessions"]):
+        print(f"  …（其余 {plan['count'] - len(plan['sessions'])} 条略）")
+    if not args.apply:
+        print("\nDRY-RUN：加 --apply 落盘（幂等写入；目标应用需先完全退出）")
+        return
+    r = backup_mod.do_restore(args.source, args.ts, p, target=args.target)
+    print(f"\n还原完成：写入 {r['written']} · 幂等跳过 {r['skipped']} · 失败 {r['failed']}")
+    for e in r.get("errors", []):
+        print(f"  [失败] {e}")
+    if r.get("target") == "dsh":
+        print("dsh 侧挂分组：完全退出 dsh 后 python sync.py attach-dsh --apply")
+    if r.get("failed"):
         sys.exit(1)
 
 

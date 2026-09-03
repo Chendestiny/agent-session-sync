@@ -123,6 +123,8 @@ pip install zstandard        # Python 侧唯一第三方依赖
 nvm use 22                   # node 相关校验用（可选）
 
 python sync.py doctor                         # 一键体检+自修复：依赖自动装/自检/存储探测/基准健康/skills 桥接/shim 补齐
+python sync.py backup --source all           # 会话快照备份到 C 库 backups/（--with-imports 含导入；--scope 7d/30d 限范围；--list 列快照）
+python sync.py restore --source claude --ts 20260903-105832 --target dsh --apply   # 从快照幂等还原（默认 dry-run；目标须可写）
 python sync.py selftest                        # 沙箱自检：全绿再动真数据
 python sync.py status                          # 各 agent 源概览
 python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
