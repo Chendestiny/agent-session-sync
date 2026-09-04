@@ -10,9 +10,10 @@
   --fg:#e6e6e6; --dim:#9aa3b5; --accent:#4f8cff; --err:#f87171; --ok:#34d399;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;overflow:hidden;
   font:14px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-header{display:flex;align-items:center;gap:18px;padding:10px 18px;
+header{display:flex;align-items:center;gap:18px;padding:4px 18px;
   background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 .brand{font-weight:700;font-size:16px}
 .brand .tag{font-size:11px;font-weight:400;color:var(--dim);border:1px solid var(--line);
@@ -24,24 +25,62 @@ nav a:hover{color:var(--fg)}
 #refresh{margin-left:auto;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
   border-radius:6px;padding:5px 14px;cursor:pointer}
 #refresh:hover{border-color:var(--accent)}
-main{padding:12px 14px;max-width:1280px;margin:0 auto}
+main{padding:12px 14px;max-width:1280px;margin:0 auto;flex:1;min-height:0;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:#3a4152 transparent}
+main::-webkit-scrollbar{width:8px}
+main::-webkit-scrollbar-track{background:transparent}
+main::-webkit-scrollbar-thumb{background:#3a4152;border-radius:4px;border:2px solid transparent;background-clip:content-box}
+main::-webkit-scrollbar-thumb:hover{background:var(--accent);background-clip:content-box}
+/* 总览视图：整页零滚动——app 变列 flex，时间轴吃剩余高度盒内滚 */
+main.fit{overflow:hidden;display:flex;flex-direction:column}
+main.fit .tl{flex:1;min-height:140px;max-height:none}
 h2{font-size:14px;color:var(--dim);font-weight:600;margin:10px 0 6px}
 h2:first-child{margin-top:0}
 .err{color:var(--err);white-space:pre-wrap}
 .dim{color:var(--dim)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(208px,1fr));gap:8px}
+/* 滚动条美化：细圆角、悬停高亮（Chromium 走 ::-webkit-，Firefox 走 scrollbar-*） */
+.rail,.tl{scrollbar-width:thin;scrollbar-color:#3a4152 transparent}
+.rail::-webkit-scrollbar,.tl::-webkit-scrollbar{height:8px;width:8px}
+.rail::-webkit-scrollbar-track,.tl::-webkit-scrollbar-track{background:transparent}
+.rail::-webkit-scrollbar-thumb,.tl::-webkit-scrollbar-thumb{background:#3a4152;border-radius:4px;
+  border:2px solid transparent;background-clip:content-box}
+.rail::-webkit-scrollbar-thumb:hover,.tl::-webkit-scrollbar-thumb:hover{background:var(--accent);background-clip:content-box}
+/* 源卡跑马灯：两行横滑（←→ 箭头 / 滚轮 / 拖拽），C 规范库另起一行 */
+.srcHead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.srcHead h2{margin:0;flex:1;min-width:0}
+.srcSearch{width:250px;max-width:40vw;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font-size:13px;padding:5px 10px;outline:none}
+.srcSearch:focus{border-color:var(--accent)}
+.railWrap{position:relative;display:flex;align-items:stretch;gap:6px}
+.railArrow{flex:none;width:26px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+  color:var(--fg);cursor:pointer;font-size:15px;line-height:1;transition:background .12s,color .12s}
+.railArrow:hover:not(:disabled){background:var(--accent);color:#fff;border-color:var(--accent)}
+.railArrow:disabled{opacity:.25;cursor:default}
+.rail{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);grid-auto-columns:238px;
+  gap:8px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;padding-top:4px;padding-bottom:4px}
+.rail .card{min-width:0;scroll-snap-align:start;height:120px;overflow:hidden}
+.card .kv.trash{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.6em}
+.crow{margin-top:8px;grid-template-columns:minmax(250px,480px)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 10px;
+  position:relative;
   transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}
 .card:hover{border-color:var(--accent)}
 .card.click{cursor:pointer}
 .card.click:hover{transform:translateY(-1px);box-shadow:0 3px 12px rgba(0,0,0,.4)}
-.card .src{display:flex;align-items:center;gap:6px;font-weight:700;flex-wrap:wrap}
+.card .src{display:flex;flex-direction:column;align-items:stretch;gap:3px}
+.card .srcline{display:flex;align-items:center;gap:6px;font-weight:700;min-width:0}
+.card .srcname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  cursor:text;user-select:text}  /* 源名可选中复制：点它不触发卡片跳转（见 onclick 守卫） */
 .card .src .sw{width:10px;height:10px;border-radius:3px;flex:none}
+.card .src .ic{width:16px;height:16px;flex:none;border-radius:3px;object-fit:contain;display:block}
+.card .src .ic.icbg{background:#d6dae2}  /* 黑色图标（dsh/kimi）垫浅灰底 */
 .card .path{font-size:10px;color:var(--dim);margin-top:2px;display:flex;gap:6px;align-items:center}
 .card .path .pt{flex:1;min-width:0;word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card .stat{font-size:12px;color:var(--dim);margin-top:3px}
-.card .tags{display:flex;gap:4px;margin-left:auto;flex:none;flex-wrap:wrap}
+.card .stat{font-size:12px;color:var(--dim);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .tags{display:flex;gap:4px;justify-content:flex-start;flex-wrap:wrap}
 .tag{font-size:10px;padding:1px 5px;border-radius:8px;border:1px solid var(--line);color:var(--dim)}
 .tag.e{border-color:#3b82f6;color:#3b82f6;cursor:pointer;transition:background .12s,color .12s}
 .tag.e:hover{background:#3b82f6;color:#0f1115}
@@ -75,12 +114,14 @@ a.xbtn:hover{border-color:var(--accent)}
 .xlist::-webkit-scrollbar-track,.modal .box::-webkit-scrollbar-track{background:transparent}
 .xlist::-webkit-scrollbar-thumb,.modal .box::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 .xlist::-webkit-scrollbar-thumb:hover,.modal .box::-webkit-scrollbar-thumb:hover{background:var(--dim)}
-.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none;
+  position:absolute;top:8px;right:10px}  /* 健康点：卡片右上角 */
 .dot.on{background:var(--ok)} .dot.off{background:var(--err)}
 .kv{font-size:12px;color:var(--dim);margin-top:4px}
 .kv b{color:var(--fg);font-weight:600}
 /* 时间轴 */
-.tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;overflow:hidden}
+.tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;
+  overflow-y:auto;max-height:42vh}
 .tl-axis{position:relative;height:18px;margin-left:84px;color:var(--dim);font-size:10px}
 .tl-axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .lane{display:flex;align-items:center;height:22px}
@@ -142,14 +183,27 @@ svg .tick{stroke:var(--line)} svg text{fill:var(--dim);font-size:10px}
 <main id="app"></main>
 <script>
 "use strict";
-const SOURCES = ["zcode","hermes","dsh","codex","workbuddy","claude","opencode","qoder","openclaw","cursor","trae"];
+const SOURCES = ["claude","codex","hermes","openclaw","zcode","dsh","workbuddy","opencode","qoder","cursor","trae","mimo","kimi","minimax","grok","copilot","gemini","cline","pi"];
 const COLORS = {zcode:"#84cc16",hermes:"#eab308",dsh:"#4f8cff",codex:"#a78bfa",
                 workbuddy:"#f472b6",claude:"#f97316",opencode:"#22d3ee",qoder:"#14b8a6",openclaw:"#ef4444",
-                cursor:"#6366f1",trae:"#0ea5e9"};
-const SRC_CN  = {zcode:"ZCode",hermes:"Hermes",dsh:"DSH",codex:"Codex",
+                cursor:"#6366f1",trae:"#0ea5e9",mimo:"#22c55e",kimi:"#d946ef",minimax:"#7c3aed",
+                grok:"#64748b",copilot:"#38bdf8",gemini:"#e879f9",cline:"#2dd4bf",pi:"#fbbf24"};
+const SRC_CN  = {zcode:"ZCode",hermes:"Hermes Agent",dsh:"DeepSeek Harness(DSH)",codex:"Codex",
                  workbuddy:"WorkBuddy",claude:"Claude Code",opencode:"OpenCode",qoder:"Qoder",openclaw:"OpenClaw",
-                 cursor:"Cursor",trae:"Trae"};
-const WRITABLE = new Set(["dsh","codex","claude","hermes","opencode","workbuddy"]); // 6 写入目标；zcode/qoder/openclaw 只读
+                 cursor:"Cursor",trae:"Trae",mimo:"MiMo-Code",kimi:"Kimi Code",minimax:"MiniMax Code",
+                 grok:"Grok Build",copilot:"GitHub Copilot",gemini:"Gemini CLI",cline:"Cline",pi:"Pi Agent"};
+const ICONS = {zcode:"zcode.png",hermes:"hermes.svg",dsh:"dsh.svg",codex:"codex.png",
+               workbuddy:"workbuddy.png",claude:"claude.png",opencode:"opencode.png",qoder:"qoder.png",
+               openclaw:"openclaw.svg",cursor:"cursor.ico",trae:"trae.png",mimo:"mimo.png",
+               kimi:"kimi.svg",minimax:"minimax.png",grok:"grok.png",copilot:"copilot.png",
+               gemini:"gemini.svg",cline:"cline.png",pi:"pi.svg"};  // /icons/ 官方图标（无图标的源回退色块）
+const ICONS_DARK = new Set(["dsh","kimi","grok"]);  // 黑色图标：垫浅灰底才看得清
+function swHtml(src){
+  if(!ICONS[src]) return '<span class="sw" style="background:'+COLORS[src]+'"></span>';
+  return '<img class="ic'+(ICONS_DARK.has(src)?" icbg":"")+'" src="/icons/'+ICONS[src]+'" alt="" width="16" height="16">';
+}
+const WRITABLE = new Set(["dsh","codex","claude","hermes","opencode","workbuddy","minimax","pi","gemini","cline"]); // 10 写入目标；zcode/qoder/openclaw 等只读
+const BLOCKED  = new Set(["trae"]); // 读取被阻断（CN 版正文库自加密）：读写均不可，仅原始库文件备份
 let metasCache = {};          // source -> metas[]
 const app = document.getElementById("app");
 
@@ -282,7 +336,7 @@ function writePrompt(src){
       "4. 如实报告：写了多少、跳过多少、有无裁剪。"
     ].join("\n");
   }
-  const needExit = ["hermes","opencode","workbuddy"].includes(src) ? "；目标应用需先完全退出再写入" : "";
+  const needExit = ["hermes","opencode","workbuddy","minimax","pi","gemini","cline"].includes(src) ? "；目标应用需先完全退出再写入" : "";
   return [
     head + "把其他 agent 的最新会话同步进 " + (SRC_CN[src]||src) + needExit + "。",
     "要求：",
@@ -302,10 +356,19 @@ function openWriteModal(src){
   );
   document.getElementById("wcopy").onclick = function(){ copyText(p, this); };
 }
-const BK_TGTS = ["dsh","codex","claude","hermes","opencode","workbuddy"];
+const BK_TGTS = ["dsh","codex","claude","hermes","opencode","workbuddy","minimax","pi","gemini","cline"];
 function renderSnapList(el, rows, withSource){
   el.innerHTML = rows.length
     ? rows.map(r => {
+        if(r.raw){
+          return '<div class="xitem" style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;cursor:default">'
+            + (withSource ? '<span class="badge" style="background:'+COLORS[r.source]+';flex:none">'+esc(SRC_CN[r.source]||r.source)+'</span>' : '')
+            + '<span class="xt" style="flex:1;min-width:0">' + esc(r.ts)
+            + ' · 📦 原始库 ' + r.count + ' 文件 · ' + r.size_kb + ' KB</span>'
+            + '<button class="mbtn ghost brst" data-src="'+esc(r.source)+'" data-ts="'+esc(r.ts)+'" data-raw="1" style="flex:none;padding:2px 10px;font-size:12px">还原</button>'
+            + '<button class="mbtn ghost bdel" data-src="'+esc(r.source)+'" data-ts="'+esc(r.ts)+'" title="删除快照目录（不可恢复）" style="flex:none;padding:2px 10px;font-size:12px;color:#ef4444;border-color:#ef4444">删</button>'
+            + '<span title="'+esc(r.dir)+'" style="flex:1 1 100%;color:var(--dim);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📁 '+esc(r.dir)+'</span></div>';
+        }
         const selfOk = WRITABLE.has(r.source);
         return '<div class="xitem" style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;cursor:default">'
           + (withSource ? '<span class="badge" style="background:'+COLORS[r.source]+';flex:none">'+esc(SRC_CN[r.source]||r.source)+'</span>' : '')
@@ -322,6 +385,17 @@ function renderSnapList(el, rows, withSource){
     : '<div class="hint">（暂无快照）</div>';
   el.querySelectorAll(".brst").forEach(b => b.onclick = async () => {
     const src = b.dataset.src, ts = b.dataset.ts;
+    if(b.dataset.raw){
+      if(!confirm("还原 " + (SRC_CN[src]||src) + " 原始库@" + ts + "？\n· 加密库文件原位覆盖写回（不解密、不解析）\n· 请先完全退出 " + (SRC_CN[src]||src))) return;
+      b.disabled = true; b.textContent = "还原中…";
+      try{
+        const r = await (await fetch("/api/restore", {method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({source: src, ts: ts})})).json();
+        alert(r.ok ? ("还原完成：原位写回 " + r.restored + " 个库文件") : ("失败：" + (r.error || r.detail)));
+      }catch(e){ alert("失败：" + e); }
+      b.disabled = false; b.textContent = "还原";
+      return;
+    }
     const sel = el.querySelector('.btgt[data-ts="'+ts+'"][data-src="'+src+'"]');
     const tgt = sel ? sel.value : "";
     if(!tgt){ alert(WRITABLE.has(src) ? "请先选择还原目标" : (SRC_CN[src]||src) + " 不可写（只读源），请先选择还原目标"); return; }
@@ -362,6 +436,33 @@ async function openCBackupModal(){
   document.getElementById("cbclose").onclick = closeModal;
 }
 async function openBackupModal(src){
+  if(BLOCKED.has(src)){
+    openModal(
+      '<h3 style="margin:0 0 10px">备份 ' + esc(SRC_CN[src]||src) + '（原始库快照）</h3>'
+      + '<div class="hint">' + esc(SRC_CN[src]||src) + ' 读取被加密阻断（正文库自加密，IR 读不出），'
+      + '会话级备份/导出/写入均不可用。<b>唯一可做的留档 = 把加密库文件整份拷进 C 库</b>，'
+      + '待日后解密攻破即可回补。</div>'
+      + '<div class="kv" style="margin-top:6px">留档对象：ModularData/ai-agent/database.db（+wal/shm，Trae 运行中也可拷，建议退出后更稳）</div>'
+      + '<button class="mbtn" id="brawgo">📦 立即快照原始库</button>'
+      + '<div class="kv" style="margin-top:10px">已有快照：</div><div class="xlist" id="bsnaps">加载中…</div>'
+      + '<button class="mbtn ghost" id="bclose" style="margin-top:8px">关闭</button>'
+    );
+    document.getElementById("brawgo").onclick = async () => {
+      const btn = document.getElementById("brawgo");
+      btn.disabled = true; btn.textContent = "快照中…";
+      try{
+        const r = await (await fetch("/api/backup", {method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({source: src})})).json();
+        alert(r.ok ? ("原始库快照完成：" + r.snapshots[0].count + " 文件 · " + r.snapshots[0].size_kb + " KB"
+          + (r.snapshots[0].count ? "" : "（未找到库文件，检查 Trae 是否安装）")) : ("失败：" + r.detail));
+        if(r.ok) renderSnapList(document.getElementById("bsnaps"), await fetchSnaps(src), false);
+      }catch(e){ alert("失败：" + e); }
+      btn.disabled = false; btn.textContent = "📦 立即快照原始库";
+    };
+    renderSnapList(document.getElementById("bsnaps"), await fetchSnaps(src), false);
+    document.getElementById("bclose").onclick = closeModal;
+    return;
+  }
   let ms = [];
   try{ ms = await cacheGet(src); }catch(e){}
   ms = ms.filter(m => !m.subagent && !m.trashed).sort((a,b) => b.updated_at - a.updated_at);
@@ -493,7 +594,14 @@ function openBindModal(src){
 }
 
 async function renderOverview(){
-  app.innerHTML = '<h2>源健康（末位卡 = C 规范库 ~/.session-sync）</h2><div class="cards" id="srcCards"></div>'
+  app.classList.add("fit");   // 整页零滚动：本视图内时间轴吃剩余高度
+  app.innerHTML = '<div class="srcHead"><h2>源健康（' + SOURCES.length + ' 家 · ←→ 滑动）</h2>'
+    + '<input id="srcSearch" class="srcSearch" placeholder="检索源：名称 / 路径…" autocomplete="off">'
+    + '<span id="srcSearchN" class="hint"></span></div>'
+    + '<div class="railWrap"><button class="railArrow" id="railL" title="向左滑动">‹</button>'
+    + '<div class="rail" id="srcCards"></div>'
+    + '<button class="railArrow" id="railR" title="向右滑动">›</button></div>'
+    + '<div class="cards crow" id="cRow"></div>'
     + '<h2>会话时间轴（位置=创建时间 · 宽度=首末轮跨度 · 点击下钻）</h2>'
     + '<div class="tl" id="tl"><div class="hint">加载中…</div></div>';
   let ov;
@@ -504,20 +612,28 @@ async function renderOverview(){
   const cards = document.getElementById("srcCards");
   cards.innerHTML = ov.sources.map(s =>
     '<div class="card click" id="card-'+s.name+'" data-src="'+s.name+'" title="点击查看该源会话列表">'
-    + '<div class="src"><span class="dot '+(s.ok?"on":"off")+'"></span>'
-    + '<span class="sw" style="background:'+COLORS[s.name]+'"></span>'+esc(SRC_CN[s.name]||s.name)
-    + '<span class="tags"><span class="tag e" title="读取器已接，可导出 Markdown / IR JSON">可导出</span>'
-    + '<span class="tag k" title="会话快照备份到 C 库 backups/（口径/日期可选，幂等还原）">备份</span>'
+    + '<div class="src"><span class="srcline"><span class="dot '+(s.ok?"on":"off")+'"></span>'
+    + swHtml(s.name)
+    + '<span class="srcname">'+esc(SRC_CN[s.name]||s.name)+'</span></span>'
+    + '<span class="tags">'
+    + (BLOCKED.has(s.name)
+        ? '<span class="tag r" title="读取被阻断：CN 版正文库 ModularData/ai-agent/database.db 自加密（无 SQLite 头，WAL 亦密文）——读取/写入均不可，仅支持原始库文件快照，详见 docs/agents/trae.md">🔒 加密阻断</span>'
+        : '<span class="tag e" title="读取器已接，可导出 Markdown / IR JSON">可导出</span>')
+    + '<span class="tag k" title="' + (BLOCKED.has(s.name)
+        ? '整库原始文件快照留档（加密库本体拷贝，解密攻破后可用）'
+        : '会话快照备份到 C 库 backups/（口径/日期可选，幂等还原）') + '">备份</span>'
     + '<span class="tag '+(WRITABLE.has(s.name)?"w":"r")+'" title="'
     + (WRITABLE.has(s.name) ? "to-X 写入器已接（会话可写入此目标）" : "只读源（无写入器；zcode 曾因兼容性问题禁写）")
     + '">'+(WRITABLE.has(s.name)?"可写入":"只读")+'</span>'
     + '<span class="tag b" title="绑定/解绑数据目录（存 ~/.session-sync/paths.json，优先于自动探测）">⚙</span></span></div>'
-    + '<div class="path"><span class="pt">'+(s.path ? esc(s.path) : '<span class="bindlnk">未找到 · 点击绑定</span>')+'</span>'
+    + '<div class="path"><span class="pt" title="'+esc(s.path || "")+'">'+(s.path ? esc(s.path) : '<span class="bindlnk">未找到 · 点击绑定</span>')+'</span>'
     + (s.bound ? '<span class="bl" style="flex:none" title="已手动绑定（~/.session-sync/paths.json）">🔗已绑定</span>' : "") + '</div>'
     + '<div class="stat">…</div>'
-    + (s.trash ? '<div class="kv">🗑 回收站 <b>'+s.trash+'</b> 条（已排除同步）</div>' : "")
+    + '<div class="kv trash" title="'+(s.trash ? '回收站 '+s.trash+' 条（已排除同步）' : '')+'">'
+    + (s.trash ? '🗑 回收站 <b>'+s.trash+'</b> 条（已排除同步）' : '&nbsp;')+'</div>'
     + '</div>').join("");
-  cards.querySelectorAll(".card.click").forEach(c => c.onclick = () => {
+  cards.querySelectorAll(".card.click").forEach(c => c.onclick = (e) => {
+    if(e.target.closest && e.target.closest(".srcname")) return;  // 选中源名复制，不跳转
     filt.sources = new Set([c.dataset.src]);
     filt.q = ""; filt.from = ""; filt.to = "";
     location.hash = "#/sessions";
@@ -538,22 +654,61 @@ async function renderOverview(){
 
   const cEl = document.createElement("div");
   cEl.className = "card";
-  document.getElementById("srcCards").appendChild(cEl);
+  cEl.dataset.src = "";
+  document.getElementById("cRow").appendChild(cEl);
   if(ov.store){
     const st = ov.store;
     const counts = Object.entries(st.counts||{}).map(([k,v])=>k+" "+v).join(" · ")||"（空）";
     const pull = Object.entries(st.state||{}).map(([k,v])=>k+" "+fmtShort(v)).join(" · ");
     const push = Object.entries(st.push||{}).map(([t,m])=>t+"（"+Object.entries(m).map(([k,v])=>k+" "+fmtShort(v)).join(" · ")+"）").join("；");
-    cEl.innerHTML = '<div class="src">📦 C 规范库 <span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div>'
-      + '<div class="path">'+esc(st.dir)+'</div>'
+    cEl.innerHTML = '<div class="src"><span class="srcline"><span class="srcname">📦 C 规范库</span></span>'
+      + '<span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div>'
+      + '<div class="path"><span class="pt" title="'+esc(st.dir)+'">'+esc(st.dir)+'</span></div>'
       + '<div class="kv">会话：<b>'+esc(counts)+'</b></div>'
       + (pull?'<div class="kv">pull 基准：'+esc(pull)+'</div>':"")
       + (push?'<div class="kv">push 水位：'+esc(push)+'</div>':"");
   }else{
-    cEl.innerHTML = '<div class="src">📦 C 规范库 <span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div><div class="path">尚未创建（先跑 pull）</div>';
+    cEl.innerHTML = '<div class="src"><span class="srcline"><span class="srcname">📦 C 规范库</span></span>'
+      + '<span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div>'
+      + '<div class="path">尚未创建（先跑 pull）</div>';
   }
   const cbk = cEl.querySelector(".tag.k");
   if(cbk) cbk.onclick = e => { e.stopPropagation(); openCBackupModal(); };
+
+  /* 跑马灯箭头：按可视宽度 80% 平滑滑动；到边禁用 */
+  const rail = document.getElementById("srcCards");
+  const aL = document.getElementById("railL"), aR = document.getElementById("railR");
+  const railStep = () => Math.max(rail.clientWidth * 0.8, 200);
+  aL.onclick = () => rail.scrollBy({left: -railStep(), behavior: "smooth"});
+  aR.onclick = () => rail.scrollBy({left: railStep(), behavior: "smooth"});
+  const railUpd = () => {
+    aL.disabled = rail.scrollLeft <= 2;
+    aR.disabled = rail.scrollLeft >= rail.scrollWidth - rail.clientWidth - 2;
+  };
+  rail.addEventListener("scroll", railUpd, {passive: true});
+  window.addEventListener("resize", railUpd);
+  railUpd();
+
+  /* 前端检索：按 名称/中文名/路径 即时过滤源卡与 C 库卡（纯前端，不发请求） */
+  const si = document.getElementById("srcSearch");
+  si.addEventListener("input", () => {
+    const q = si.value.trim().toLowerCase();
+    let n = 0;
+    document.querySelectorAll("#srcCards .card").forEach(c => {
+      const src = c.dataset.src || "";
+      const ptext = ((c.querySelector(".path .pt") || {}).textContent || "").toLowerCase();
+      const hit = !q || src.toLowerCase().includes(q) || (SRC_CN[src] || "").toLowerCase().includes(q)
+        || ptext.includes(q);
+      c.style.display = hit ? "" : "none";
+      if(hit) n++;
+    });
+    const cp = ((cEl.querySelector(".path") || {}).textContent || "").toLowerCase();
+    const cHit = !q || "c 规范库 session-sync store c库".includes(q) || cp.includes(q);
+    cEl.style.display = cHit ? "" : "none";
+    if(cHit) n++;
+    document.getElementById("srcSearchN").textContent = q ? "命中 " + n : "";
+    railUpd();
+  });
 
   /* 每源并行拉 metas（走缓存：返回不再重新加载）；单源慢不阻塞别的源 */
   const all = {};
@@ -564,12 +719,13 @@ async function renderOverview(){
       all[src] = ms;
       if(card){
         const last = ms[0];
-        let stat;
         const n = ms.filter(m => !m.subagent).length;  // 🤖子代理默认不同步，不进统计
         const im = ms.filter(m => !m.subagent && m.imported).length;  // 📥导入副本计入但单列（正主在原生源）
-        stat = '<b>'+n+'</b> = 导入 '+im+' + 原生 '+(n-im)
-             + (last?' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」":"");
-        card.querySelector(".stat").innerHTML = stat;
+        const tail = last ? ' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+"」" : "";
+        const el = card.querySelector(".stat");
+        el.innerHTML = '<b>'+n+'</b> = 导入 '+im+' + 原生 '+(n-im)+tail;
+        el.title = n + ' = 导入 ' + im + ' + 原生 ' + (n-im)
+          + (last ? ' · 最近 '+fmtShort(last.updated_at)+'「'+(last.title||"").slice(0,16)+'」' : '');
       }
     }catch(e){
       if(card) card.querySelector(".stat").innerHTML = '<span class="err">'+esc(e.message)+"</span>";
@@ -599,8 +755,9 @@ function renderTimeline(all){
     const ms = (all[src]||[]).slice().sort((a,b)=>a.span_first-b.span_first);
     let bars = "";
     for(const m of ms){
-      const l = x(m.span_first||m.created_at||t0);
       const w = Math.max((Math.max(m.span_last||0, m.updated_at||0) - (m.span_first||m.created_at||t0)) / dom * 100, .4);
+      // 右缘钳制：末尾会话（如最新一条）不越出轨道被裁——整条左移到 100% 内
+      const l = Math.min(parseFloat(x(m.span_first||m.created_at||t0)), 100 - w).toFixed(3);
       const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+(m.trashed?" · 🗑回收站":"")+(m.subagent?" · 🤖子代理":"")+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
       bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+(m.trashed?"#4b5563":COLORS[src])+';opacity:'+(m.subagent?".35":".85")+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
     }
@@ -775,6 +932,7 @@ function route(){
   const h = location.hash || "#/";
   const view = h.startsWith("#/session/") ? "sessions" : (h === "#/sessions" ? "sessions" : "overview");
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
+  app.classList.remove("fit");   // 仅总览视图整页零滚动（renderOverview 里再加回）
   const parts = h.slice(2).split("/").map(decodeURIComponent);
   if(parts[0] === "session" && parts[1] && parts[2]) renderDetail(parts[1], parts[2]);
   else if(parts[0] === "sessions") renderSessions();

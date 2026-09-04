@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Hermes Agent 中文社区">
+  <style>
+    .background { fill: #ffffff; }
+    .mark { color: #111111; }
+    @media (prefers-color-scheme: dark) {
+      .background { fill: #111111; }
+      .mark { color: #ffffff; }
+    }
+  </style>
+  <rect class="background" width="64" height="64"/>
+  <g class="mark" fill="currentColor">
+    <path d="M5 53 32 9 29.7 13 8.3 50.7Z"/>
+    <path d="m32 9 27 44-3.4-2.2L29.7 13Z"/>
+    <path d="M5 53h54l-3.4-2.2-47.3-.1Z"/>
+  </g>
+  <g class="mark" fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="miter">
+    <path stroke-width="1.4" d="M5 53 32 9l27 44H5Z"/>
+    <path stroke-width="1.2" d="m32 9-2.3 4-2 4.5-2 5-2 5.5-2.2 6-2.5 7-3 12"/>
+    <path stroke-width="1.1" d="M8.3 50.7 29.7 13l25.9 37.8"/>
+    <path stroke-width="1.1" d="M8.3 50.7 27.7 17.5l27.9 33.3"/>
+    <path stroke-width="1.1" d="M8.3 50.7 25.7 22.5l29.9 28.3"/>
+    <path stroke-width="1.1" d="M8.3 50.7 23.7 28l31.9 22.8"/>
+    <path stroke-width="1.1" d="M8.3 50.7 21.5 34l34.1 16.8"/>
+    <path stroke-width="1.1" d="M8.3 50.7 19 41l36.6 9.8"/>
+  </g>
+</svg>

@@ -19,13 +19,16 @@ from .. import paths, readers, store, syncstate
 DEFAULT_PORT = 8321
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
-SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "claude", "opencode", "qoder", "openclaw",
-           "cursor", "trae"]
+SOURCES = ["claude", "codex", "hermes", "openclaw", "zcode", "dsh", "workbuddy", "opencode", "qoder",
+           "cursor", "trae", "mimo", "kimi", "minimax", "grok", "copilot", "gemini", "cline", "pi"]
 _ROOT_ATTR = {
     "zcode": "zcode_db", "hermes": "hermes_db", "dsh": "dsh_sessions",
     "codex": "codex_sessions", "workbuddy": "workbuddy_home",
     "claude": "claude_projects", "opencode": "opencode_db", "qoder": "qoder_home",
     "openclaw": "openclaw_home", "cursor": "cursor_global_db", "trae": "trae_global_db",
+    "mimo": "mimo_home", "kimi": "kimi_home", "minimax": "minimax_home",
+    "grok": "grok_home", "copilot": "copilot_home",
+    "gemini": "gemini_home", "cline": "cline_home", "pi": "pi_home",
 }
 
 
@@ -37,6 +40,17 @@ def _imported_flag(source: str, sid: str, p) -> bool:
         return bool(p.opencode_db) and sid in readers._oc_import_ids(p.opencode_db)
     if source in ("hermes", "codex", "claude", "workbuddy"):
         return readers._is_agentsync_uuid5(sid)
+    if source == "minimax":
+        return readers._mm_is_import(sid)
+    if source == "pi":
+        return readers._is_agentsync_uuid5(sid) if sid.count("-") == 4 else False
+    if source == "gemini":
+        return readers._is_agentsync_uuid5(sid)
+    if source == "cline":
+        from ..clinewrite import import_ids as _cl_ids
+        from .. import paths as _pp
+        p2 = _pp.detect()
+        return bool(p2.cline_home) and sid in _cl_ids(p2.cline_home)
     return False  # zcode/qoder/openclaw 从不是写入目标
 
 
@@ -93,6 +107,12 @@ def _trash_count(name: str, p) -> int | None:
             # 与 zcode/hermes 同口径：数源自身归档（dsh UI 软删名单），
             # 不数 agentsync 自己的 ~/.trash-dsh（那是 prune 的可恢复区，另一个概念）
             return len(readers._dsh_archived_ids(str(p.dsh_sessions)))
+        if name == "minimax" and p.minimax_home:
+            mdb = os.path.join(str(p.minimax_home), "v2", "sqlite", "runtime-state.sqlite")
+            con = sqlite3.connect(f"file:{mdb.replace(chr(92), '/')}?mode=ro", uri=True)
+            n = con.execute("SELECT COUNT(*) FROM local_runtime_sessions WHERE archived=1").fetchone()[0]
+            con.close()
+            return int(n)
     except Exception:
         return None
     return None
@@ -109,6 +129,7 @@ def api_overview() -> dict:
             "path": str(root) if root else None,
             "trash": _trash_count(name, p) if root is not None else None,
             "bound": name in bound,   # 手动绑定（~/.session-sync/paths.json）
+            "blocked": name == "trae",  # 读取被阻断（CN 版正文库自加密）：读写均不可，仅原始库备份
         })
     res: dict = {"sources": sources}
     if store.store_exists():
@@ -142,6 +163,12 @@ def _hidden_ids(source: str, p) -> set[str]:
             return ids
         if source == "dsh" and p.dsh_sessions:
             return readers._dsh_archived_ids(str(p.dsh_sessions))
+        if source == "minimax" and p.minimax_home:
+            mdb = os.path.join(str(p.minimax_home), "v2", "sqlite", "runtime-state.sqlite")
+            con = sqlite3.connect(f"file:{mdb.replace(chr(92), '/')}?mode=ro", uri=True)
+            ids = {r[0] for r in con.execute("SELECT session_id FROM local_runtime_sessions WHERE archived=1")}
+            con.close()
+            return ids
     except Exception:
         return set()
     return set()
@@ -179,6 +206,15 @@ def _display_sessions(source: str, p):
         return readers.read_claude(p.claude_projects, include_imports=True)
     if source == "opencode" and p.opencode_db:
         return readers.read_opencode(p.opencode_db, include_imports=True)
+    if source == "minimax" and p.minimax_home:
+        return readers.read_minimax(p.minimax_home, include_archived=True,
+                                    include_imports=True, include_subagents=True)
+    if source == "pi" and p.pi_home:
+        return readers.read_pi(p.pi_home, include_imports=True)
+    if source == "gemini" and p.gemini_home:
+        return readers.read_gemini(p.gemini_home, include_imports=True)
+    if source == "cline" and p.cline_home:
+        return readers.read_cline(p.cline_home, include_imports=True)
     return readers.load_sources([source], p).get(source, [])
 
 
@@ -305,6 +341,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if u.path.startswith("/icons/"):
+                # 源卡 16×16 官方图标（包内静态文件，白名单防穿越）
+                import re as _re
+                name = os.path.basename(u.path[len("/icons/"):])
+                fp = os.path.join(os.path.dirname(PAGE), "icons", name)
+                if not _re.match(r"^[0-9A-Za-z_-]+\.(svg|png|ico)$", name) or not os.path.isfile(fp):
+                    return self._json({"error": "icon not found"}, 404)
+                mime = {"svg": "image/svg+xml", "png": "image/png", "ico": "image/x-icon"}[name.rsplit(".", 1)[1]]
+                body = open(fp, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Cache-Control", "max-age=86400")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if u.path == "/api/overview":
                 return self._json(api_overview())
             if u.path == "/api/sessions":
@@ -386,8 +438,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": False, "detail": f"unknown source: {src}"}, 400)
                 raw_ids = body.get("ids") or ""
                 ids = {i for i in str(raw_ids).split(",") if i} or None
-                rows = backup_mod.do_backup([src], paths.detect(),
-                                            with_imports=bool(body.get("with_imports")), ids=ids)
+                if src in backup_mod.RAW_SOURCES:
+                    rows = backup_mod.do_raw_backup([src], paths.detect())
+                else:
+                    rows = backup_mod.do_backup([src], paths.detect(),
+                                                with_imports=bool(body.get("with_imports")), ids=ids)
                 return self._json({"ok": True, "snapshots": rows})
             except Exception as e:
                 return self._json({"ok": False, "detail": f"{type(e).__name__}: {e}"}, 500)
