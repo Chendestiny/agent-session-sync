@@ -1498,6 +1498,19 @@ def cmd_selftest(args):
         except urllib.error.HTTPError as e:
             code_ic = e.code
         check(code_ic == 404, "icons/ 白名单拒绝路径穿越")
+        # 前端 ES modules 静态路由：MIME 硬编码正确（text/javascript 等）+ 穿越/未知扩展拒绝
+        for _st, _ct in (("/app/main.js", "text/javascript"), ("/app/views/overview.js", "text/javascript"),
+                         ("/app/style.css", "text/css")):
+            with opener.open(httpd.url + _st) as r:
+                check(r.status == 200 and r.headers.get("Content-Type", "").startswith(_ct),
+                      "static " + _st + " 可取（ES modules 端点，MIME=" + _ct + "）")
+        for _bad in ("/app/..%5C__init__.py", "/app/agent-session-sync.egg"):
+            try:
+                opener.open(httpd.url + _bad)
+                code_st = 200
+            except urllib.error.HTTPError as e:
+                code_st = e.code
+            check(code_st == 404, "app/ 静态白名单拒绝 " + _bad)
         st, metas = get("/api/sessions?source=dsh")
         check(st == 200 and any(m["id"].startswith("import-") for m in metas), "sessions 读到沙箱导入会话")
         # titles.json 显示层叠加：人工标题覆盖到 webui（同步侧不受影响）

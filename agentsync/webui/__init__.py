@@ -2,7 +2,9 @@
 
 - 浏览/导出下载（GET）；写操作走 sync.py CLI，页面写端点仅目录绑定族（POST /api/bind-path、
   /api/pick-folder），其余 405；实时读源无缓存
-- 仅绑定 127.0.0.1；页面为包内 index.html（单文件、无构建、离线可用）
+- 仅绑定 127.0.0.1；页面为包内 index.html + app/ 原生 ES modules（无构建、无 npm、离线可用；
+  /app/* /vendor/* 白名单静态路由，MIME 硬编码——Windows 下 mimetypes 读注册表可能给 .js
+  返回 text/plain，模块脚本会被浏览器拒载）
 """
 from __future__ import annotations
 
@@ -18,6 +20,17 @@ from .. import paths, readers, store, syncstate
 
 DEFAULT_PORT = 8321
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+_WEBUI_DIR = os.path.dirname(PAGE)
+
+# 静态资源 MIME 硬编码：见模块 docstring（不信任 mimetypes/注册表）
+_STATIC_MIME = {
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+}
 
 SOURCES = ["claude", "codex", "hermes", "openclaw", "zcode", "dsh", "workbuddy", "opencode", "qoder",
            "cursor", "trae", "mimo", "kimi", "minimax", "grok", "copilot", "gemini", "cline", "pi"]
@@ -337,6 +350,25 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "index.html missing"}, 500)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if u.path.startswith(("/app/", "/vendor/")):
+                # 前端模块 / 第三方库本地文件（ES modules 无构建方案）：
+                # 白名单顶层目录 + normpath 防穿越 + 扩展名硬编码 MIME。
+                # /app 改完 F5 即生效（no-store）；/vendor 是落盘的第三方库，可长缓存。
+                rel = u.path.lstrip("/").split("?")[0]
+                fp = os.path.normpath(os.path.join(_WEBUI_DIR, *rel.split("/")))
+                ext = os.path.splitext(fp)[1].lower()
+                inside = os.path.commonpath([fp, _WEBUI_DIR]) == _WEBUI_DIR
+                if not inside or ext not in _STATIC_MIME or not os.path.isfile(fp):
+                    return self._json({"error": "not found"}, 404)
+                body = open(fp, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", _STATIC_MIME[ext])
+                self.send_header("Cache-Control",
+                                 "no-store" if u.path.startswith("/app/") else "max-age=86400")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
