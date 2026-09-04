@@ -95,16 +95,7 @@ python sync.py web
 
 agent 会按 `SKILL.md` 的纪律执行：selftest → dry-run → 确认 → apply → **二次验证**。
 
-**同步完的二次验证**（粘贴给 agent 即可让它自证）：
-
-```text
-按 SKILL.md 做发布后二次验证：
-1. python sync.py verify                     # 全部导入会话事件纪律通过
-2. 抽查刚导入会话的落盘文件三要素：session/imported 标记(ignorable=true)、
-   [来源] 前缀标题、分区目录名与头部 cwd 编码一致
-3. 退出 dsh 后 python sync.py attach-dsh --apply 回填分组+projcache 标题行，
-   重启 dsh 后确认：出现在对应工作区分组、列表带标题、点开可续聊
-```
+**同步完的二次验证**：`python sync.py verify` 全过 → 退出 dsh 后 `attach-dsh --apply` → 重启 dsh，会话出现在对应分组、带 `[来源]` 标题、可续聊。
 
 也可以直接克隆使用：
 
@@ -113,83 +104,51 @@ git clone https://github.com/Chendestiny/agent-session-sync && cd agent-session-
 pip install zstandard && python sync.py selftest
 ```
 
-> AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
-> 故障排查 / 升级适配），交给任何 agent 读它即可。
-
 ## ⌨️ 具体脚本
 ```bash
-cd "<项目目录>"
-pip install zstandard        # Python 侧唯一第三方依赖
-nvm use 22                   # node 相关校验用（可选）
+cd "<项目目录>" && pip install zstandard
 
-python sync.py doctor                         # 一键体检+自修复：依赖自动装/自检/存储探测/基准健康/skills 桥接/shim 补齐
-python sync.py backup --source all           # 会话快照备份到 C 库 backups/（--with-imports 含导入；--scope 7d/30d 限范围；--list 列快照）
-python sync.py restore --source claude --ts 20260903-105832 --target dsh --apply   # 从快照幂等还原（默认 dry-run；目标须可写）
-python sync.py selftest                        # 沙箱自检：全绿再动真数据
-python sync.py status                          # 各 agent 源概览
-python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
-python sync.py to-dsh   --source zcode --scope 7d          # 参数即确认：zcode + 最近 7 天
-python sync.py to-dsh   --source all --scope inc --apply   # ① 导入到 dsh（agent/脚本必给两参）
-python sync.py to-codex --source zcode --scope inc --apply  # 反向写入 codex（to-claude/to-hermes/to-opencode/to-workbuddy/to-minimax 同款）
-python sync.py pull --source all --scope inc                # A→C：各源 → 规范库 ~/.session-sync（安全免退出）
-python sync.py push --target codex --apply --scope inc      # C→B：断点续推（中途换 agent 可继续）
-# ② 完全退出 dsh 后：挂工作区分组 + 回填侧栏标题缓存（新会话进分组且列表直接带标题）
-python sync.py attach-dsh --apply
-# ③ 启动 dsh：import-* 会话出现在对应工作区分组，可 resume 续聊
-
-python sync.py archive  --source all --apply   # Markdown 归档 → ./archive
-python sync.py verify                          # 校验已导入 dsh 会话
-python sync.py regtest                         # 真库矩阵回归 dry-run：源×写目标逐格探针计划（11读6写闭环体检）
-python sync.py regtest --apply                 # 同上执行（退出全部目标应用）：每格写1条+幂等复跑+读回+自家→自家拦截验证
-python sync.py web                            # 可视化 dashboard：总览时间轴/会话列表/轮次时间条（浏览器自动开 127.0.0.1:8321）
-python sync-finish.py --check                   # 一键收尾·只读预览（prune/导入/挂载待办全貌）
-python sync-finish.py                           # 一键收尾：先弹两道确认（来源区/数据量）→ prune+导入+挂载+校验
-python sync-finish.py --sources zcode --scope 7d           # 参数即确认（非交互场景）
-python sync-finish.py --sources all --scope all --confirm-history   # 历史全量需显式确认
-python sync.py prune --pick --hard                          # dsh 瘦身手术刀：交互列出全部会话（可关键词过滤）编号勾选、彻底删除（先退出 dsh）
-python sync.py prune --session "标题或id子串" --hard --apply          # 点名直接删除（先跑 dry-run 看命中；--older-than N 限天数；--native 连原生会话点名）
-tools\verify-dsh-backend.cmd                   # 用 dsh 原生后端做强校验（Node 22）
+python sync.py selftest && python sync.py status   # 沙箱自检全绿 → 各源概览
+python sync.py doctor          # 一键体检+自修复（依赖/基准/桥接/防环清单审计）
+python sync.py to-dsh          # 交互弹两道确认后 dry-run；非交互必给 --source/--scope（参数即确认）
+python sync.py to-dsh   --source all --scope inc --apply   # ① 导入（agent/脚本必给两参）
+python sync.py attach-dsh --apply                          # ② 完全退出 dsh 后：挂分组+回填标题
+python sync.py to-codex --source zcode --scope inc --apply # 反向写入；to-claude/-hermes/-opencode/-workbuddy/-minimax/-pi/-gemini/-cline 同款
+python sync.py pull --source all --scope inc               # A→C：→ ~/.session-sync（安全免退出）
+python sync.py push --target codex --apply --scope inc     # C→B：断点续推（中断重跑即续）
+python sync.py backup --source all          # 会话快照 → C 库 backups/（--with-imports/--scope/--list）
+python sync.py restore --source claude --ts <快照> --target dsh --apply   # 幂等还原（默认 dry-run）
+python sync.py regtest --apply              # 真库矩阵回归：每格写1条+幂等复跑+读回+防环拦截（退出目标应用）
+python sync.py web                          # 可视化 dashboard（127.0.0.1:8321）
+python sync-finish.py                       # 一键收尾：确认 → prune+导入+挂载+校验（--check 只读预览）
+python sync.py prune --session "标题或id子串" --hard --apply   # dsh 瘦身点名删除（--pick 交互勾选）
 ```
 
-> **dsh 侧完整闭环 = 导入(to-dsh) + 挂分组与标题缓存(attach-dsh) + 重启 dsh。** 只导入不做第②步，
-> 会话会堆在「未分组」且列表不显示标题（点开才有）。批量改标题：编辑 `titles.json` 后
-> `python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json --budget 550000`。
+> **dsh 完整闭环 = ①导入 → ②退出 dsh 后 attach-dsh → ③重启**，少第②步会堆「未分组」且无标题。
+> 批量改标题：`titles.json` + `to-dsh --force --titles titles.json`。
 >
-> AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 /
-> 故障排查 / 升级适配），交给任何 agent 读它即可。
+> AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 / 故障排查 / 升级适配）。
 
 ## 🧩 作为 skill 使用（整目录即 skill bundle）
 
-本目录本身就是 skill 包（`SKILL.md` + `sync.py` + `📦 agentsync/` + `🛠️ tools/` + `docs/`），
-用 junction 链接到 skills 目录（免管理员权限）：
-
-```bat
-mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
-```
-
-之后在 zcode / dsh / hermes 里说一句"同步一下会话"，agent 按 SKILL.md 的纪律执行
-（selftest → dry-run → 确认 → apply）。
-
-通用过滤：`--session <源ID子串>` `--cwd <路径子串>` `--since <天数>` `--limit <N>`；
-`to-dsh --budget <tokens>` 对超长会话做三层裁剪保续聊。
+整目录即 skill 包。装好后在任何 agent 里说一句“同步一下会话”，agent 按 SKILL.md 纪律执行
+（selftest → dry-run → 确认 → apply）；手动挂载：`mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"`。
+通用过滤：`--session/--cwd/--since/--limit`；`to-dsh --budget <tokens>` 超长会话三层裁剪保续聊。
 
 ## 🧪 发布前验证概览
 
-以下能力均在真实数据上验证通过后发布（方法见各文档，可在你机器复跑）：
+以下能力均在真实数据上验证通过（方法见各文档，可在你机器复跑）：
 
-- ✅ 跨 agent 读取：codex / hermes / dsh / zcode / workbuddy 全部解析正常（含工具调用、reasoning、失败态、图片占位）
-- ✅ dsh 写入：使用 dsh 自带 JsonlSessionPersistence 后端读回校验 100% 通过（🛠️ tools/verify-dsh-backend.cmd 可复跑）
-- ✅ 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
-- ✅ 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
-- ✅ 48 格矩阵回归（2026-09-02 实测）：8 源 × 6 写目标真库闭环——42 格各精准写入 1 条（幂等复跑零写入、含导入口径读回轮数一致）+ 6 格自家→自家防回环拦截全部触发；`sync.py regtest` 一条命令可复跑
-- ✅ 15 家读取源全部真实数据验证（2026-09-03/04 新增 minimax/pi/gemini/cline 四家，含中转站流式碎片、append-only parentId 链等实测坑）
-- ✅ 10 家写入目标（新增 minimax/pi/gemini/cline）：minimax 经 UI 验收、pi/gemini/cline 真库落盘读回，三家为明文 JSONL/JSON 追加式配方
-- ✅ 防环三件套：uuid5 版本位判别（7 家）+ 旁路清单（opencode/cline，doctor 第 8 步反推法自动审计补登记）+ import-* 前缀（dsh）；导入会话一律带 [source] 标题前缀（有标题机制的 6 目标）
-- ✅ 备份/还原：会话 IR 快照 + 加密阻断源（trae）自动转原始库整份快照，还原=幂等写入可跨家
-- ✅ 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
+- ✅ **15 家读取**全部真库验证：工具调用往返 / reasoning / 失败态 / 分区编码全量比对零偏差
+- ✅ **10 家写入**真库落盘：minimax 经 UI 验收；dsh 用原生后端读回 100%（tools/verify-dsh-backend.cmd 可复跑）
+- ✅ **回归双保险**：194 项沙箱自检 + 48 格真库矩阵回归（每格写 1 条 + 幂等复跑 + 读回 + 防环拦截）
+- ✅ **幂等增量**：重复导入去重；源会话增长只追加新轮次
+- ✅ **防环三件套**：uuid5 版本位 / 旁路清单（doctor 反推法自动审计）/ import-* 前缀；导入一律带 `[来源]` 标题
+- ✅ **备份还原 + 超长裁剪**：IR 快照跨家幂等还原、加密源（trae）转原始库快照、三层预算保续聊
+
 ### ⚠️ 踩坑记录
 
-12+ 条实测坑（dsh 投影缓存 / codex threads 索引 / hermes 计数列 / opencode 项目上下文等）
+62 条实测坑（dsh 投影缓存 / codex threads 索引 / opencode 事件溯源 / gemini 流式碎片等）
 全部修进代码，明细见 **[docs/pitfalls.md](docs/pitfalls.md)**（按家分组，含修复方案）。
 
 ## 📂 目录结构
@@ -197,11 +156,10 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 ```
 📖 AGENTS.md            AI agent 操作手册（交给 agent 读的入口）
 🧩 SKILL.md             skill 封装（整目录即 skill bundle，junction 到 skills 目录）
-⌨️ sync.py              CLI 入口（status/serve/to-dsh/attach-dsh/archive/verify/selftest）
+⌨️ sync.py              CLI 入口（status/web/doctor/to-*/attach-dsh/backup/restore/regtest/prune/archive/verify/selftest）
 titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-dsh --force --titles 重写）
 📐 docs/FORMATS.md      格式总览 + 归一化 IR + 索引
-🔬 docs/agents/         各家会话结构详解（深度规格分册，一家一册）
-  dsh.md  zcode.md  hermes.md  codex.md  workbuddy.md
+🔬 docs/agents/         各家会话结构详解（一家一册，15 读写 + 4 占位）
 📑 examples/            真实示例：命令输出转录 + 转换实例（含再生成方法）
 🛠️ tools/
   verify-dsh-backend.mjs   dsh 原生后端读回校验（Node 22+，先 nvm use 22）
@@ -223,7 +181,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 ## 🔒 安全边界
 
 - 🔍 读取永远只读（sqlite `mode=ro` URI）。
-- ✏️ 写入目标（dsh / codex / claude code / hermes / opencode / workbuddy）：只新增幂等导入会话
+- ✏️ 写入目标（dsh / codex / claude code / hermes / opencode / workbuddy / minimax / pi / gemini / cline）：只新增幂等导入会话
   （`import-*` / uuid5 id），不触碰原生会话，每次写入前自动备份。
 - 🚫 **zcode 暂不写入**（写入方向已于 2026-08-26 移除，写入器存档于 `zcodewrite.py`）。
 - ♻️ 恢复方法：存储异常时，用 `*.agentsync-bak-*` 自动备份覆盖回原文件（需退出对应应用）。

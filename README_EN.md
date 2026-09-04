@@ -27,7 +27,7 @@ Requirements: Python 3.10+ · `pip install zstandard` (the only third-party depe
 ## Quick commands
 
 ```bash
-ass web        # dashboard at 127.0.0.1:8321: 15-source timeline, session list, per-turn bars, export, path binding
+ass web        # dashboard at 127.0.0.1:8321: 19-card icon carousel, timeline, session list, export, backup, path binding
 ass doctor     # one-click health check + self-repair (deps, selftest, stores, baselines, skill bridges, shims)
 ass selftest   # sandboxed end-to-end test (never touches real data)
 ass status     # detect which agent stores exist on this machine
