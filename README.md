@@ -2,13 +2,13 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-十五家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline**（trae CN 版正文库自加密暂不可读；mimo/kimi 等占位卡待实装）。
+十九家 agent 一张网：**15 家会话全互通**——codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline（trae CN 版正文库自加密暂不可读）；**4 张占位卡**——grok / mimo / kimi / copilot（路径与格式已源码核验，装好即接）。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：15 读 + 10 写 + 4 占位，而非两两直连）。
+单向归一（A→C→B：15 读 + 10 写 + 4 占位 = 19 卡，而非两两直连）。
 
-| A · 读取源（9 家） | C · 归一化 | B · 写入目标（6 家 + 归档） |
+| A · 读取源（15 家 + 4 占位） | C · 归一化 | B · 写入目标（10 家 + 归档） |
 |---|---|---|
-| codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode · qoder · openclaw（均为只读源） | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy ＋ Markdown 归档（浏览/搜索） |
+| codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode · qoder · openclaw · cursor · trae · MiniMax Code · Pi Agent · Gemini CLI · Cline（grok/mimo/kimi/copilot 占位待实装） | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline ＋ Markdown 归档（浏览/搜索） |
 
 ## 📋 前置条件
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，
@@ -209,7 +209,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 📦 agentsync/
   paths.py              各家存储定位 + zcode project_id 规则
   model.py              归一化 IR + token 估算 + 三层预算裁剪
-  readers.py            十五家读取器 + 4 张占位源（全部只读）
+  readers.py            十五家读取器 + 4 张占位源（19 卡全景，全部只读）
   dshwrite.py           dsh 事件合成 + 多帧 zstd 落盘（幂等+增量）+ 工作区挂载
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档
