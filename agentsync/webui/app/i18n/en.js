@@ -7,7 +7,7 @@ export default {
   "theme.indigo": "Deep Indigo",
   "theme.olive": "Cold Olive",
   "theme.sand": "Warm Sand",
-  "theme.title": "Switch theme (current: {name})",
+  "theme.title": "Switch theme",
   "refresh": "Refresh",
   "refresh.title": "Drop cache and reload",
 

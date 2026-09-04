@@ -26,10 +26,12 @@ export function setLang(l){
   return true;
 }
 export function onLangChange(f){ subs.add(f); return () => subs.delete(f); }
-/* 静态骨架翻译：index.html 中 data-i18n / data-i18n-title 元素（视图由模板重绘自带语言） */
+/* 静态骨架翻译：index.html 中 data-i18n / data-i18n-title / data-i18n-aria 元素
+   （含 <option data-i18n>；视图由模板重绘自带语言） */
 export function applyStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-title]").forEach(el => { el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el => { el.setAttribute("aria-label", t(el.dataset.i18nAria)); });
   document.title = t("app.title");
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
 }

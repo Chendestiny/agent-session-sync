@@ -7,7 +7,7 @@ export default {
   "theme.indigo": "深空蓝紫",
   "theme.olive": "冷灰橄榄",
   "theme.sand": "浅色暖沙",
-  "theme.title": "切换配色（当前：{name}）",
+  "theme.title": "切换配色",
   "refresh": "刷新",
   "refresh.title": "丢弃缓存重新加载",
 

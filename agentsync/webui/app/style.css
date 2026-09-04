@@ -4,38 +4,61 @@
    olive=冷灰橄榄（其 olive），sand=浅色暖沙（其 light）。--on-accent=accent 底上的文字色。 */
 :root, html[data-theme="indigo"]{
   --bg:#050508; --panel:#08080c; --panel2:#11111a; --line:#1a1a25;
-  --fg:#f0f0f5; --dim:#a1a1aa; --accent:#6366f1; --err:#f87171; --ok:#34d399;
+  --fg:#f0f0f5; --dim:#a1a1aa; --accent:#6366f1; --accent-2:#22d3ee; --err:#f87171; --ok:#34d399;
   --scroll:rgba(255,255,255,.14); --backdrop:rgba(0,0,0,.6); --shadow-card:0 3px 12px rgba(0,0,0,.3);
   --bar-outline:rgba(255,255,255,.2); --tc:#67e8f9; --on-accent:#ffffff;
+  --accent-mist:rgba(99,102,241,.10); --accent-line:rgba(99,102,241,.45);
+  --gradient:linear-gradient(135deg,#22d3ee,#818cf8,#6366f1); --accent-glow:rgba(99,102,241,.25);
 }
 html[data-theme="olive"]{            /* 冷灰橄榄：灰调底 + 低饱和高亮橄榄 */
   --bg:#111113; --panel:#17171a; --panel2:#1e1e21; --line:#2a2a2e;
-  --fg:#f5f5f5; --dim:#a3a3a3; --accent:#a3e635; --err:#f87171; --ok:#34d399;
+  --fg:#f5f5f5; --dim:#a3a3a3; --accent:#a3e635; --accent-2:#84cc16; --err:#f87171; --ok:#34d399;
   --scroll:rgba(255,255,255,.14); --backdrop:rgba(0,0,0,.6); --shadow-card:0 3px 12px rgba(0,0,0,.3);
   --bar-outline:rgba(255,255,255,.2); --tc:#d9f99d; --on-accent:#000000;
+  --accent-mist:rgba(163,230,53,.08); --accent-line:rgba(163,230,53,.4);
+  --gradient:linear-gradient(135deg,#a3e635,#84cc16); --accent-glow:rgba(163,230,53,.2);
 }
 html[data-theme="sand"]{              /* 浅色暖沙：沙白纸面 + 赤陶强调 */
   --bg:#f5f0eb; --panel:#fafaf8; --panel2:#ffffff; --line:#ddd8d2;
-  --fg:#292524; --dim:#57534e; --accent:#c2410c; --err:#dc2626; --ok:#059669;
+  --fg:#292524; --dim:#57534e; --accent:#c2410c; --accent-2:#ea580c; --err:#dc2626; --ok:#059669;
   --scroll:rgba(0,0,0,.12); --backdrop:rgba(0,0,0,.3); --shadow-card:0 3px 12px rgba(0,0,0,.12);
   --bar-outline:rgba(0,0,0,.3); --tc:#b45309; --on-accent:#ffffff;
+  --accent-mist:rgba(194,65,12,.07); --accent-line:rgba(194,65,12,.35);
+  --gradient:linear-gradient(135deg,#c2410c,#ea580c); --accent-glow:rgba(194,65,12,.12);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;overflow:hidden;
   font:14px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 header{display:flex;align-items:center;gap:18px;padding:4px 18px;
-  background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-.brand{font-weight:700;font-size:16px}
+  position:sticky;top:0;z-index:5;
+  background:linear-gradient(var(--panel),var(--panel)) padding-box,var(--gradient) border-box;
+  border-bottom:2px solid transparent}  /* 底边 2px 渐变签名线（双背景 border-box 技巧） */
+.brand{font-weight:700;font-size:16px;
+  background:var(--gradient);-webkit-background-clip:text;background-clip:text;
+  color:transparent;-webkit-text-fill-color:transparent}  /* 品牌名渐变文字 */
 .brand .tag{font-size:11px;font-weight:400;color:var(--dim);border:1px solid var(--line);
   border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:2px}
 nav{display:flex;gap:4px}
 nav a{color:var(--dim);text-decoration:none;padding:5px 12px;border-radius:6px}
-nav a.active{color:var(--fg);background:var(--panel2)}
+nav a.active{color:var(--accent);background:var(--panel2)}
 nav a:hover{color:var(--fg)}
-#theme{margin-left:auto;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
-  border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px}
-#theme:hover{border-color:var(--accent)}
+/* 主题下拉：闭合态只显图标，展开才见名称（自绘菜单，对齐 my-website ThemeToggle） */
+#themeWrap{margin-left:auto;position:relative}
+#themeBtn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;
+  padding:5px 9px;cursor:pointer;display:inline-flex;align-items:center}
+#themeBtn:hover,#themeBtn:focus{border-color:var(--accent)}
+#themeMenu{position:absolute;right:0;top:calc(100% + 6px);z-index:60;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:4px;min-width:158px;box-shadow:var(--shadow-card)}
+.themeItem{display:flex;align-items:center;gap:8px;width:100%;background:transparent;border:none;
+  color:var(--fg);font:inherit;font-size:13px;padding:6px 8px;border-radius:6px;cursor:pointer;text-align:left}
+.themeItem:hover{background:var(--panel2)}
+.themeItem.on{color:var(--accent)}
+.themeItem .swatch{display:inline-flex;gap:3px;flex:none}
+.themeItem .swatch i{width:10px;height:10px;border-radius:3px;display:block;border:1px solid var(--line)}
+.themeItem .tname{flex:1}
+.themeItem .tcheck{flex:none;width:14px;text-align:center;visibility:hidden;font-weight:700}
+.themeItem.on .tcheck{visibility:visible}
 #lang{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
   border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:600}
 #lang:hover{border-color:var(--accent)}
@@ -53,6 +76,8 @@ main.fit{overflow:hidden;display:flex;flex-direction:column}
 main.fit .tl{flex:1;min-height:140px;max-height:none}
 h2{font-size:14px;color:var(--dim);font-weight:600;margin:10px 0 6px}
 h2:first-child{margin-top:0}
+h2::before,.modal .box h3::before{content:"";display:inline-block;width:3px;height:12px;border-radius:2px;   /* 小节题头：渐变竖标（弹窗 h3 同款） */
+  background:var(--gradient);margin-right:8px;vertical-align:-1px}
 .err{color:var(--err);white-space:pre-wrap}
 .dim{color:var(--dim)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
@@ -71,21 +96,21 @@ h2:first-child{margin-top:0}
   color:var(--fg);font-size:13px;padding:5px 10px;outline:none}
 .srcSearch:focus{border-color:var(--accent)}
 .railWrap{position:relative;display:flex;align-items:stretch;gap:6px}
-.railArrow{flex:none;width:26px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
-  color:var(--fg);cursor:pointer;font-size:15px;line-height:1;transition:background .12s,color .12s}
+.railArrow{flex:none;width:26px;border:1px solid var(--accent-line);border-radius:8px;background:var(--panel2);
+  color:var(--dim);cursor:pointer;font-size:15px;line-height:1;transition:background .12s,color .12s}
 .railArrow:hover:not(:disabled){background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .railArrow:disabled{opacity:.25;cursor:default}
 .rail{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);grid-auto-columns:238px;
   gap:8px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;padding-top:4px;padding-bottom:4px}
 .rail .card{min-width:0;scroll-snap-align:start;height:120px;overflow:hidden}
 .card .kv.trash{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.6em}
-.crow{margin-top:8px;grid-template-columns:minmax(250px,480px)}
+.crow{margin-top:8px;margin-left:32px;grid-template-columns:minmax(250px,480px)}  /* 32=左箭头 26+gap 6：C 卡与跑马灯首卡对齐 */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 10px;
   position:relative;
   transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}
-.card:hover{border-color:var(--accent)}
+.card:hover{border-color:var(--accent-2);box-shadow:var(--shadow-card),0 0 16px var(--accent-glow)}  /* hover：accent-2 边 + 发光 */
 .card.click{cursor:pointer}
-.card.click:hover{transform:translateY(-1px);box-shadow:var(--shadow-card)}
+.card.click:hover{transform:translateY(-1px);box-shadow:var(--shadow-card),0 0 16px var(--accent-glow)}
 .card .src{display:flex;flex-direction:column;align-items:stretch;gap:3px}
 .card .srcline{display:flex;align-items:center;gap:6px;font-weight:700;min-width:0}
 .card .srcname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -97,6 +122,7 @@ h2:first-child{margin-top:0}
 .card .path .pt{flex:1;min-width:0;word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .stat{font-size:12px;color:var(--dim);margin-top:3px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .stat b{color:var(--accent)}  /* 会话总数：主题色数字，主题气质常驻可见 */
 .card .tags{display:flex;gap:4px;justify-content:flex-start;flex-wrap:wrap}
 .tag{font-size:10px;padding:1px 5px;border-radius:8px;border:1px solid var(--line);color:var(--dim)}
 .tag.e{border-color:#3b82f6;color:#3b82f6;cursor:pointer;transition:background .12s,color .12s}
@@ -110,8 +136,8 @@ h2:first-child{margin-top:0}
 .tag.b:hover{background:var(--dim);color:#0f1115}
 .bindlnk{color:var(--err);cursor:pointer;text-decoration:underline dotted}
 .bl{color:var(--accent);font-size:10px}
-a.xbtn{font-size:11px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-right:3px}
-a.xbtn:hover{border-color:var(--accent)}
+a.xbtn{font-size:11px;color:var(--accent-2);text-decoration:none;border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-right:3px}
+a.xbtn:hover{border-color:var(--accent-2)}
 .modal{position:fixed;inset:0;background:var(--backdrop);display:flex;align-items:center;justify-content:center;z-index:50}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;max-width:680px;width:92%;padding:16px 18px;max-height:82vh;overflow:auto}
 .modal label{display:inline-block;margin:2px 10px 2px 0;font-size:13px;cursor:pointer}
@@ -139,12 +165,13 @@ a.xbtn:hover{border-color:var(--accent)}
 /* 时间轴 */
 .tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;
   overflow-y:auto;max-height:42vh}
-.tl-axis{position:relative;height:18px;margin-left:84px;color:var(--dim);font-size:10px}
+.tl-axis{position:relative;height:18px;margin-left:168px;color:var(--dim);font-size:10px}  /* =lb 宽 160+8 */
 .tl-axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .lane{display:flex;align-items:center;height:22px}
-.lane .lb{width:76px;flex:none;font-size:11px;color:var(--dim);text-align:right;padding-right:8px}
-.lane .track{position:relative;flex:1;height:16px;background:var(--panel2);
-  border-radius:4px;overflow:hidden}
+.lane .lb{width:160px;flex:none;font-size:11px;color:var(--dim);text-align:right;padding-right:8px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}  /* 宽列放最长源名；再长省略号，不折行压邻道 */
+.lane .track{position:relative;flex:1;height:16px;background:var(--accent-mist);
+  border-radius:4px;overflow:hidden}  /* 泳道底 tint：主题色薄雾 */
 .bar{position:absolute;top:4px;height:14px;border-radius:2px;min-width:3px;opacity:.85;cursor:pointer}
 .bar:hover{opacity:1;outline:1px solid var(--bar-outline)}
 /* 筛选 */
@@ -155,12 +182,14 @@ a.xbtn:hover{border-color:var(--accent)}
 .filters input[type=date],.filters input[type=text]{
   background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:4px 8px}
 .filters input[type=text]{width:200px}
+#fGo{color:var(--accent);border-color:var(--accent)}  /* 筛选主按钮常驻主题色 */
 /* 表格 */
 table{border-collapse:collapse;width:100%;background:var(--panel);
   border:1px solid var(--line);border-radius:10px;overflow:hidden}
 th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
-th{color:var(--dim);font-weight:600;background:var(--panel2);position:sticky;top:0}
-tr.row{cursor:pointer} tr.row:hover{background:var(--panel2)}
+th{color:var(--dim);font-weight:600;background:var(--panel2);position:sticky;top:0;
+  border-bottom:1px solid var(--accent-line)}  /* 表头底部 accent 结构线 */
+tr.row{cursor:pointer} tr.row:hover{background:var(--accent-mist)}
 tr.row.trashed{opacity:.45}
 tr.row.trashed td:nth-child(2){text-decoration:line-through;text-decoration-color:#6b7280}
 tr.row.subrow{opacity:.55}
@@ -176,13 +205,13 @@ tr.row.improw td:nth-child(2){color:#f59e0b}
 .turn:hover{border-color:var(--accent)}
 .turn .meta{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
 .turn .idx{color:var(--dim);font-size:12px}
-.turn .tm{color:var(--accent);font-size:12px}
+.turn .tm{color:var(--accent-2);font-size:12px}
 .turn .pv{margin-top:2px;color:var(--fg)}
 .turn .steps{margin-top:8px;cursor:default}
 .blk{background:var(--panel2);border-radius:6px;padding:6px 10px;margin-top:6px;font-size:13px}
 .blk.reasoning{color:var(--dim);font-style:italic}
 .blk pre{margin:0;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .tc{color:var(--tc)} .tr{color:var(--dim)} .err-block{color:var(--err)}
-svg .tick{stroke:var(--line)} svg text{fill:var(--dim);font-size:10px}
+svg .tick{stroke:var(--accent-line)} svg text{fill:var(--dim);font-size:10px}
 .hint{color:var(--dim);font-size:12px}
-.back{color:var(--accent);text-decoration:none;display:inline-block;margin-bottom:10px}
+.back{color:var(--accent-2);text-decoration:none;display:inline-block;margin-bottom:10px}

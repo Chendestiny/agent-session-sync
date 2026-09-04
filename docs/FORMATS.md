@@ -57,11 +57,18 @@ block = {"type":"text"|"reasoning","text"} | {"type":"tool-call","id","name","ar
 
 `python sync.py web` → 127.0.0.1:8321（`--port` 可改）自动开浏览器；**写端点仅目录绑定族**
 （POST /api/bind-path、/api/pick-folder，其余 POST 405）、
-实时读源无缓存、页面单文件离线可用。端点契约：
+实时读源无缓存、页面离线可用（index.html + `app/` 原生 ES modules，无构建无 npm；
+`GET /app/*` 白名单静态路由，MIME 硬编码——Windows 注册表可能把 .js 报成 text/plain 会被浏览器拒载；
+header「中/EN」语言切换：字典 `app/i18n/{zh,en}.js`（174 键，回退链 en→zh→key），localStorage `ass-lang` 记忆，切换即整站重绘；
+header 下拉选主题：`html[data-theme]` 切 CSS 变量组（indigo 深空蓝紫=默认 / olive 冷灰橄榄 / sand 浅色暖沙，
+配色移植自 my-website frontend/src/themes.js），localStorage `ass-theme` 记忆，index.html 内联脚本防首帧闪烁；
+刷新按钮为 SVG 图标（title/aria 走 data-i18n-title/-aria））。
+端点契约：
 
 | 端点 | 返回 |
 |---|---|
 | `GET /` | 单页面板（总览时间轴 / 会话列表 / 会话详情三视图） |
+| `GET /app/*.js` `/app/*.css` | 前端 ES modules 静态文件（no-store；`/vendor/` 同法、长缓存） |
 | `GET /api/overview` | `{sources:[{name,ok,path}], store:{dir,counts,state,push}|null, state:{源:水位ms}}` |
 | `GET /api/sessions?source=&q=&from=&to=` | 会话 meta 列表（updated_at 降序）：`source,id,title,cwd,created_at,updated_at,turns,messages,tools,span_first,span_last,path` |
 | `GET /api/session?source=&id=` | 全量 IR JSON（`store.session_to_dict`，含 `turns[].time`） |

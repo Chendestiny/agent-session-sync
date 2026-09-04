@@ -15,6 +15,3 @@ export function setTheme(name){
   try{ localStorage.setItem(KEY, cur); }catch(e){}
   return cur;
 }
-export function cycleTheme(){
-  return setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
-}
