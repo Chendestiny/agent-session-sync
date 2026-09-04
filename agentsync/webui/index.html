@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-session-sync · 会话同步 dashboard</title>
+<script>/* 主题防闪烁：首帧前恢复上次选择（与 app/theme.js 同 key） */
+try{var _t=localStorage.getItem("ass-theme");if(_t)document.documentElement.dataset.theme=_t}catch(e){}</script>
 <link rel="stylesheet" href="/app/style.css">
 </head>
 <body>
@@ -13,6 +15,7 @@
     <a href="#/" data-view="overview" data-i18n="nav.overview">总览</a>
     <a href="#/sessions" data-view="sessions" data-i18n="nav.sessions">会话列表</a>
   </nav>
+  <button id="theme">🎨</button>
   <button id="lang" data-i18n-title="lang.title">EN</button>
   <button id="refresh" data-i18n="refresh" data-i18n-title="refresh.title">刷新</button>
 </header>

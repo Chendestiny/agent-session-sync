@@ -4,6 +4,10 @@ export default {
   "nav.overview": "总览",
   "nav.sessions": "会话列表",
   "lang.title": "切换语言（Switch language）",
+  "theme.indigo": "深空蓝紫",
+  "theme.olive": "冷灰橄榄",
+  "theme.sand": "浅色暖沙",
+  "theme.title": "切换配色（当前：{name}）",
   "refresh": "刷新",
   "refresh.title": "丢弃缓存重新加载",
 

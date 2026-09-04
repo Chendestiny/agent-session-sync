@@ -4,6 +4,10 @@ export default {
   "nav.overview": "Overview",
   "nav.sessions": "Sessions",
   "lang.title": "切换语言（Switch language）",
+  "theme.indigo": "Deep Indigo",
+  "theme.olive": "Cold Olive",
+  "theme.sand": "Warm Sand",
+  "theme.title": "Switch theme (current: {name})",
   "refresh": "Refresh",
   "refresh.title": "Drop cache and reload",
 
