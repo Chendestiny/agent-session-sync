@@ -19,6 +19,9 @@ nav a:hover{color:var(--fg)}
 #refresh{margin-left:auto;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
   border-radius:6px;padding:5px 14px;cursor:pointer}
 #refresh:hover{border-color:var(--accent)}
+#lang{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+  border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:600}
+#lang:hover{border-color:var(--accent)}
 main{padding:12px 14px;max-width:1280px;margin:0 auto;flex:1;min-height:0;overflow-y:auto;
   scrollbar-width:thin;scrollbar-color:#3a4152 transparent}
 main::-webkit-scrollbar{width:8px}

@@ -2,6 +2,7 @@
 import { SOURCES, SRC_CN, COLORS, swHtml, WRITABLE, BLOCKED } from "../sources.js";
 import { esc, fmt, fmtShort, errBox } from "../format.js";
 import { jget, cacheGet } from "../api.js";
+import { t } from "../i18n/index.js";
 import { filt } from "./sessions.js";
 import { openExportModal } from "../modals/export.js";
 import { openWriteModal } from "../modals/write.js";
@@ -10,15 +11,15 @@ import { openBindModal } from "../modals/bind.js";
 const app = document.getElementById("app");
 export async function renderOverview(){
   app.classList.add("fit");   // 整页零滚动：本视图内时间轴吃剩余高度
-  app.innerHTML = '<div class="srcHead"><h2>源健康（' + SOURCES.length + ' 家 · ←→ 滑动）</h2>'
-    + '<input id="srcSearch" class="srcSearch" placeholder="检索源：名称 / 路径…" autocomplete="off">'
+  app.innerHTML = '<div class="srcHead"><h2>' + t("ov.srcHealth", {n: SOURCES.length}) + '</h2>'
+    + '<input id="srcSearch" class="srcSearch" placeholder="'+t("ov.search.ph")+'" autocomplete="off">'
     + '<span id="srcSearchN" class="hint"></span></div>'
-    + '<div class="railWrap"><button class="railArrow" id="railL" title="向左滑动">‹</button>'
+    + '<div class="railWrap"><button class="railArrow" id="railL" title="'+t("ov.slideL")+'">‹</button>'
     + '<div class="rail" id="srcCards"></div>'
-    + '<button class="railArrow" id="railR" title="向右滑动">›</button></div>'
+    + '<button class="railArrow" id="railR" title="'+t("ov.slideR")+'">›</button></div>'
     + '<div class="cards crow" id="cRow"></div>'
-    + '<h2>会话时间轴（位置=创建时间 · 宽度=首末轮跨度 · 点击下钻）</h2>'
-    + '<div class="tl" id="tl"><div class="hint">加载中…</div></div>';
+    + '<h2>'+t("ov.timeline.h")+'</h2>'
+    + '<div class="tl" id="tl"><div class="hint">'+t("common.loading")+'</div></div>';
   let ov;
   try{ ov = await jget("/api/overview"); }
   catch(e){ document.getElementById("tl").innerHTML = errBox(e.message); return; }
@@ -26,26 +27,25 @@ export async function renderOverview(){
   /* 源卡：先画健康，再并行补会话数 */
   const cards = document.getElementById("srcCards");
   cards.innerHTML = ov.sources.map(s =>
-    '<div class="card click" id="card-'+s.name+'" data-src="'+s.name+'" title="点击查看该源会话列表">'
+    '<div class="card click" id="card-'+s.name+'" data-src="'+s.name+'" title="'+t("ov.card.title")+'">'
     + '<div class="src"><span class="srcline"><span class="dot '+(s.ok?"on":"off")+'"></span>'
     + swHtml(s.name)
     + '<span class="srcname">'+esc(SRC_CN[s.name]||s.name)+'</span></span>'
     + '<span class="tags">'
     + (BLOCKED.has(s.name)
-        ? '<span class="tag r" title="读取被阻断：CN 版正文库 ModularData/ai-agent/database.db 自加密（无 SQLite 头，WAL 亦密文）——读取/写入均不可，仅支持原始库文件快照，详见 docs/agents/trae.md">🔒 加密阻断</span>'
-        : '<span class="tag e" title="读取器已接，可导出 Markdown / IR JSON">可导出</span>')
+        ? '<span class="tag r" title="'+t("ov.tag.blocked.tip")+'">'+t("ov.tag.blocked")+'</span>'
+        : '<span class="tag e" title="'+t("ov.tag.export.tip")+'">'+t("ov.tag.export")+'</span>')
     + '<span class="tag k" title="' + (BLOCKED.has(s.name)
-        ? '整库原始文件快照留档（加密库本体拷贝，解密攻破后可用）'
-        : '会话快照备份到 C 库 backups/（口径/日期可选，幂等还原）') + '">备份</span>'
+        ? t("ov.tag.backup.tip.blocked") : t("ov.tag.backup.tip")) + '">'+t("ov.tag.backup")+'</span>'
     + '<span class="tag '+(WRITABLE.has(s.name)?"w":"r")+'" title="'
-    + (WRITABLE.has(s.name) ? "to-X 写入器已接（会话可写入此目标）" : "只读源（无写入器；zcode 曾因兼容性问题禁写）")
-    + '">'+(WRITABLE.has(s.name)?"可写入":"只读")+'</span>'
-    + '<span class="tag b" title="绑定/解绑数据目录（存 ~/.session-sync/paths.json，优先于自动探测）">⚙</span></span></div>'
-    + '<div class="path"><span class="pt" title="'+esc(s.path || "")+'">'+(s.path ? esc(s.path) : '<span class="bindlnk">未找到 · 点击绑定</span>')+'</span>'
-    + (s.bound ? '<span class="bl" style="flex:none" title="已手动绑定（~/.session-sync/paths.json）">🔗已绑定</span>' : "") + '</div>'
+    + (WRITABLE.has(s.name) ? t("ov.tag.writable.tip") : t("ov.tag.readonly.tip"))
+    + '">'+(WRITABLE.has(s.name)?t("ov.tag.writable"):t("ov.tag.readonly"))+'</span>'
+    + '<span class="tag b" title="'+t("ov.tag.bind.tip")+'">⚙</span></span></div>'
+    + '<div class="path"><span class="pt" title="'+esc(s.path || "")+'">'+(s.path ? esc(s.path) : '<span class="bindlnk">'+t("ov.notfound")+'</span>')+'</span>'
+    + (s.bound ? '<span class="bl" style="flex:none" title="'+t("ov.bound.tip")+'">'+t("ov.bound")+'</span>' : "") + '</div>'
     + '<div class="stat">…</div>'
-    + '<div class="kv trash" title="'+(s.trash ? '回收站 '+s.trash+' 条（已排除同步）' : '')+'">'
-    + (s.trash ? '🗑 回收站 <b>'+s.trash+'</b> 条（已排除同步）' : '&nbsp;')+'</div>'
+    + '<div class="kv trash" title="'+(s.trash ? t("ov.trash.tip", {n: s.trash}) : '')+'">'
+    + (s.trash ? t("ov.trash", {n: s.trash}) : '&nbsp;')+'</div>'
     + '</div>').join("");
   cards.querySelectorAll(".card.click").forEach(c => c.onclick = (e) => {
     if(e.target.closest && e.target.closest(".srcname")) return;  // 选中源名复制，不跳转
@@ -53,19 +53,19 @@ export async function renderOverview(){
     filt.q = ""; filt.from = ""; filt.to = "";
     location.hash = "#/sessions";
   });
-  cards.querySelectorAll(".tag").forEach(t => t.onclick = e => {
+  cards.querySelectorAll(".tag").forEach(tEl => tEl.onclick = e => {
     e.stopPropagation();
-    const src = t.closest(".card").dataset.src;
-    if(t.classList.contains("e")) openExportModal(src);
-    else if(t.classList.contains("k")) openBackupModal(src);
-    else if(t.classList.contains("w")) openWriteModal(src);
-    else if(t.classList.contains("b")) openBindModal(src);
+    const src = tEl.closest(".card").dataset.src;
+    if(tEl.classList.contains("e")) openExportModal(src);
+    else if(tEl.classList.contains("k")) openBackupModal(src);
+    else if(tEl.classList.contains("w")) openWriteModal(src);
+    else if(tEl.classList.contains("b")) openBindModal(src);
   });
   cards.querySelectorAll(".bindlnk").forEach(l => l.onclick = e => {
     e.stopPropagation();
     openBindModal(l.closest(".card").dataset.src);
   });
-  document.querySelectorAll("#srcCards .stat").forEach(el => el.textContent = "统计加载中…");
+  document.querySelectorAll("#srcCards .stat").forEach(el => el.textContent = t("ov.statLoading"));
 
   const cEl = document.createElement("div");
   cEl.className = "card";
@@ -76,16 +76,16 @@ export async function renderOverview(){
     const counts = Object.entries(st.counts||{}).map(([k,v])=>k+" "+v).join(" · ")||"（空）";
     const pull = Object.entries(st.state||{}).map(([k,v])=>k+" "+fmtShort(v)).join(" · ");
     const push = Object.entries(st.push||{}).map(([t,m])=>t+"（"+Object.entries(m).map(([k,v])=>k+" "+fmtShort(v)).join(" · ")+"）").join("；");
-    cEl.innerHTML = '<div class="src"><span class="srcline"><span class="srcname">📦 C 规范库</span></span>'
-      + '<span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div>'
+    cEl.innerHTML = '<div class="src"><span class="srcline"><span class="srcname">'+t("ov.cstore")+'</span></span>'
+      + '<span class="tags"><span class="tag k" title="'+t("ov.cstore.backup.tip")+'">'+t("ov.tag.backup")+'</span></span></div>'
       + '<div class="path"><span class="pt" title="'+esc(st.dir)+'">'+esc(st.dir)+'</span></div>'
-      + '<div class="kv">会话：<b>'+esc(counts)+'</b></div>'
-      + (pull?'<div class="kv">pull 基准：'+esc(pull)+'</div>':"")
-      + (push?'<div class="kv">push 水位：'+esc(push)+'</div>':"");
+      + '<div class="kv">'+t("ov.cstore.counts", {counts: esc(counts)})+'</div>'
+      + (pull?'<div class="kv">'+t("ov.cstore.pull", {v: esc(pull)})+'</div>':"")
+      + (push?'<div class="kv">'+t("ov.cstore.push", {v: esc(push)})+'</div>':"");
   }else{
-    cEl.innerHTML = '<div class="src"><span class="srcline"><span class="srcname">📦 C 规范库</span></span>'
-      + '<span class="tags"><span class="tag k" title="查看/还原/删除全部备份快照（~/.session-sync/backups/）">备份</span></span></div>'
-      + '<div class="path">尚未创建（先跑 pull）</div>';
+    cEl.innerHTML = '<div class="src"><span class="srcline"><span class="srcname">'+t("ov.cstore")+'</span></span>'
+      + '<span class="tags"><span class="tag k" title="'+t("ov.cstore.backup.tip")+'">'+t("ov.tag.backup")+'</span></span></div>'
+      + '<div class="path">'+t("ov.cstore.empty")+'</div>';
   }
   const cbk = cEl.querySelector(".tag.k");
   if(cbk) cbk.onclick = e => { e.stopPropagation(); openCBackupModal(); };
@@ -121,7 +121,7 @@ export async function renderOverview(){
     const cHit = !q || "c 规范库 session-sync store c库".includes(q) || cp.includes(q);
     cEl.style.display = cHit ? "" : "none";
     if(cHit) n++;
-    document.getElementById("srcSearchN").textContent = q ? "命中 " + n : "";
+    document.getElementById("srcSearchN").textContent = q ? t("ov.searchHit", {n}) : "";
     railUpd();
   });
 
@@ -136,11 +136,11 @@ export async function renderOverview(){
         const last = ms[0];
         const n = ms.filter(m => !m.subagent).length;  // 🤖子代理默认不同步，不进统计
         const im = ms.filter(m => !m.subagent && m.imported).length;  // 📥导入副本计入但单列（正主在原生源）
-        const tail = last ? ' · 最近 '+esc(fmtShort(last.updated_at))+"「"+esc((last.title||"").slice(0,16))+'」' : "";
+        const tailHtml = last ? t("ov.stat.tail", {time: esc(fmtShort(last.updated_at)), title: esc((last.title||"").slice(0,16))}) : "";
         const el = card.querySelector(".stat");
-        el.innerHTML = '<b>'+n+'</b> = 导入 '+im+' + 原生 '+(n-im)+tail;
-        el.title = n + ' = 导入 ' + im + ' + 原生 ' + (n-im)
-          + (last ? ' · 最近 '+fmtShort(last.updated_at)+'「'+(last.title||"").slice(0,16)+'」' : '');
+        el.innerHTML = t("ov.stat", {n, im, native: n-im, tail: tailHtml});
+        const tailTxt = last ? t("ov.stat.tail", {time: fmtShort(last.updated_at), title: (last.title||"").slice(0,16)}) : "";
+        el.title = t("ov.stat.tip", {n, im, native: n-im, tail: tailTxt});
       }
     }catch(e){
       if(card) card.querySelector(".stat").innerHTML = '<span class="err">'+esc(e.message)+"</span>";
@@ -151,7 +151,7 @@ export async function renderOverview(){
 function renderTimeline(all){
   const tl = document.getElementById("tl");
   const entries = Object.values(all).flat();
-  if(!entries.length){ tl.innerHTML = '<div class="hint">暂无会话数据</div>'; return; }
+  if(!entries.length){ tl.innerHTML = '<div class="hint">'+t("ov.tl.empty")+'</div>'; return; }
   const t0 = Math.min(...entries.map(m => m.span_first||m.created_at||Infinity).filter(Number.isFinite));
   const t1raw = Math.max(...entries.map(m => Math.max(m.span_last||0, m.updated_at||0)));
   let t1 = t1raw;
@@ -172,7 +172,9 @@ function renderTimeline(all){
       const w = Math.max((Math.max(m.span_last||0, m.updated_at||0) - (m.span_first||m.created_at||t0)) / dom * 100, .4);
       // 右缘钳制：末尾会话（如最新一条）不越出轨道被裁——整条左移到 100% 内
       const l = Math.min(parseFloat(x(m.span_first||m.created_at||t0)), 100 - w).toFixed(3);
-      const tip = (SRC_CN[src]||src)+" · "+(m.title||m.id)+(m.trashed?" · 🗑回收站":"")+(m.subagent?" · 🤖子代理":"")+"\n"+fmt(m.span_first||m.created_at)+" ~ "+fmt(Math.max(m.span_last||0,m.updated_at||0))+" · "+m.turns+" 轮";
+      const tip = t("ov.tl.tip", {src: SRC_CN[src]||src, title: m.title||m.id,
+        flags: (m.trashed?t("flag.trashed"):"")+(m.subagent?t("flag.subagent"):""),
+        from: fmt(m.span_first||m.created_at), to: fmt(Math.max(m.span_last||0,m.updated_at)), turns: m.turns});
       bars += '<div class="bar" style="left:'+l+'%;width:'+w+'%;background:'+(m.trashed?"#4b5563":COLORS[src])+';opacity:'+(m.subagent?".35":".85")+'" title="'+esc(tip)+'" data-href="#/session/'+src+"/"+encodeURIComponent(m.id)+'"></div>';
     }
     const shown = (all[src]||[]).filter(m => !m.subagent).length;  // 泳道计数与源卡同口径（不含🤖子代理）

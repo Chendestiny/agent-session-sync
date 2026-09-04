@@ -10,13 +10,15 @@
 <header>
   <div class="brand">agent-session-sync</div>
   <nav>
-    <a href="#/" data-view="overview">总览</a>
-    <a href="#/sessions" data-view="sessions">会话列表</a>
+    <a href="#/" data-view="overview" data-i18n="nav.overview">总览</a>
+    <a href="#/sessions" data-view="sessions" data-i18n="nav.sessions">会话列表</a>
   </nav>
-  <button id="refresh" title="丢弃缓存重新加载">刷新</button>
+  <button id="lang" data-i18n-title="lang.title">EN</button>
+  <button id="refresh" data-i18n="refresh" data-i18n-title="refresh.title">刷新</button>
 </header>
 <main id="app"></main>
-<!-- 原生 ES modules，无构建：入口 main.js（模块延迟执行，等价于原底部 <script> 时机） -->
+<!-- 原生 ES modules，无构建：入口 main.js（模块延迟执行，等价于原底部 <script> 时机）。
+     静态文案带 data-i18n*，applyStatic() 启动/切语言时统一翻译；视图文案在模板 t() 里。 -->
 <script type="module" src="/app/main.js"></script>
 </body>
 </html>
