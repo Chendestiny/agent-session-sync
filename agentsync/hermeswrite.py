@@ -93,6 +93,8 @@ def plan_write(db_path: str, sess: Session, budget: int | None, force: bool = Fa
     turns, trimmed = apply_budget_trim(sess.turns, budget)
     sid = local_id(sess)
     title = (sess.title or "").strip()
+    if title and not (title.startswith("[") and "] " in title[:14]):
+        title = f"[{sess.source}] {title}"  # 导入标记（对齐 dshwrite 的 [source] 前缀）
     created_s = (sess.created_at or int(datetime.now(timezone.utc).timestamp() * 1000)) / 1000
     state_dir = os.path.dirname(str(db_path))
     stats = {

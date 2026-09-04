@@ -25,6 +25,14 @@ class StorePaths:
     openclaw_home: Path | None = None  # ~/.openclaw（agents/main/sessions/<uuid>.jsonl）
     cursor_global_db: Path | None = None  # %APPDATA%/Cursor/User/globalStorage/state.vscdb（cursorDiskKV）
     trae_global_db: Path | None = None    # %APPDATA%/Trae/User/globalStorage/state.vscdb（同 VS Code 系布局）
+    mimo_home: Path | None = None         # %LOCALAPPDATA%/mimocode 或 ~/.local/share/mimocode（OpenCode fork，待实机核验）
+    kimi_home: Path | None = None         # ~/.kimi-code（Kimi Code CLI，minidb 自有格式待核）
+    minimax_home: Path | None = None      # ~/.minimax（v2/sqlite/runtime-state.sqlite 注册表+消息行）
+    grok_home: Path | None = None         # ~/.grok（Grok Build：sessions/<cwd编码>/<uuid7>/ JSONL 三层，仓库已核）
+    copilot_home: Path | None = None      # %APPDATA%/Code/User（GitHub Copilot=VS Code 本体 chatSessions，待核验）
+    gemini_home: Path | None = None       # ~/.gemini（Gemini CLI：tmp/<项目标识>/chats/session-*.json(l)，仓库已核）
+    cline_home: Path | None = None        # %APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev（tasks/<id>/api_conversation_history.json，仓库已核）
+    pi_home: Path | None = None           # ~/.pi（Pi Agent Harness：agent/sessions/*.jsonl；minimax 的 pi-agent 同源运行时）
 
 
 def detect() -> StorePaths:
@@ -91,9 +99,10 @@ def detect() -> StorePaths:
     if (ocl / "agents" / "main" / "sessions").is_dir():
         s.openclaw_home = ocl
 
-    # cursor / trae（VS Code 系 AI IDE）：会话在 globalStorage/state.vscdb 的
-    # cursorDiskKV 表（composerData:* 会话头 + bubbleId:* 消息）。trae 国内版
-    # 目录名带 " CN" 后缀，两个名字都认（本机残留 = Trae CN，chat index 空）。
+    # cursor / trae（VS Code 系 AI IDE）：cursor 会话在 globalStorage/state.vscdb 的
+    # cursorDiskKV 表（composerData:* 会话头 + bubbleId:* 消息）。trae CN 实测无此表，
+    # 会话正典在 ModularData/ai-agent/database.db 且整库自加密（读取阻断，读取器返回 0，
+    # 详见 docs/agents/trae.md）；目录名带 " CN" 后缀，两个名字都认。
     base = os.environ.get("APPDATA")
     if base:
         cdb = Path(base) / "Cursor" / "User" / "globalStorage" / "state.vscdb"
@@ -104,6 +113,74 @@ def detect() -> StorePaths:
             if tdb.is_file():
                 s.trae_global_db = tdb
                 break
+
+    # minimax（MiniMax Code）：~/.minimax 下 v2/sqlite/runtime-state.sqlite 才算装了
+    mm = home() / ".minimax"
+    if (mm / "v2" / "sqlite" / "runtime-state.sqlite").is_file():
+        s.minimax_home = mm
+
+    # mimo（小米 MiMo-Code，OpenCode fork；仓库 packages/shared/src/global.ts 已核验）：
+    # MIMOCODE_HOME=<root>（data 在 <root>/data）或 XDG 数据目录（Win=%LOCALAPPDATA%\mimocode）。
+    # 库名 mimocode.db（storage/db.ts），schema 同构 opencode 的 session/message/part。
+    for mc in (
+        Path(os.environ["MIMOCODE_HOME"]) / "data" if os.environ.get("MIMOCODE_HOME") else None,
+        Path(os.environ.get("XDG_DATA_HOME") or "") / "mimocode" if os.environ.get("XDG_DATA_HOME") else None,
+        Path(os.environ.get("LOCALAPPDATA") or "") / "mimocode" if os.environ.get("LOCALAPPDATA") else None,
+        home() / ".local" / "share" / "mimocode",
+    ):
+        if mc and mc.is_dir():
+            s.mimo_home = mc
+            break
+
+    # kimi（Kimi Code CLI，仓库 apps/kimi-code/src/constant/app.ts 已核验）：
+    # 数据目录 = $KIMI_CODE_HOME 或 ~/.kimi-code（注意不是 ~/.kimi）；会话在其自研
+    # minidb 里（packages/minidb，非 sqlite），格式细节待实装后核验
+    for kc in (
+        Path(os.environ["KIMI_CODE_HOME"]) if os.environ.get("KIMI_CODE_HOME") else None,
+        home() / ".kimi-code",
+    ):
+        if kc and kc.is_dir():
+            s.kimi_home = kc
+            break
+
+    # grok（xAI Grok Build CLI，仓库 xai-dirs + pager/docs/17-sessions.md 已核验）：
+    # $GROK_HOME 或 ~/.grok，会话在 sessions/<cwd编码>/<uuid7>/（summary.json +
+    # updates.jsonl 正典 + chat_history.jsonl 原始层，纯 JSONL 明文）
+    gh = Path(os.environ["GROK_HOME"]) if os.environ.get("GROK_HOME") else (home() / ".grok")
+    if gh.is_dir():
+        s.grok_home = gh
+
+    # copilot（GitHub Copilot = VS Code 本体的 agent chat）：会话在
+    # workspaceStorage/<hash>/chatSessions/*.json；仅在探测到 chatSessions 时才算装了
+    if os.environ.get("APPDATA"):
+        cu = Path(os.environ["APPDATA"]) / "Code" / "User"
+        if cu.is_dir():
+            for ws in (cu / "workspaceStorage").glob("*/chatSessions"):
+                if ws.is_dir():
+                    s.copilot_home = cu
+                    break
+
+    # gemini（Google Gemini CLI，仓库已核验）：$GEMINI_CLI_HOME 或 ~/.gemini，
+    # 会话在 tmp/<项目标识>/chats/session-<时间戳>-<id8>.json(.jsonl)
+    gdir = Path(os.environ["GEMINI_CLI_HOME"]) if os.environ.get("GEMINI_CLI_HOME") else (home() / ".gemini")
+    if gdir.is_dir():
+        s.gemini_home = gdir
+
+    # cline（Cline VS Code 扩展，仓库已核验）：任务 JSON 在
+    # globalStorage/saoudrizwan.claude-dev/tasks/<taskId>/api_conversation_history.json
+    if os.environ.get("APPDATA"):
+        cd = Path(os.environ["APPDATA"]) / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
+        if cd.is_dir():
+            s.cline_home = cd
+
+    # pi（Pi Agent Harness @earendil-works/pi-coding-agent，仓库已核验）：
+    # $PI_CODING_AGENT_SESSION_DIR 或 ~/.pi/agent/sessions/<时间戳>_<id>.jsonl；
+    # minimax 的 pi-agent 运行时同源，但存储各自独立（~/.pi 与 ~/.minimax）
+    pidir = (Path(os.environ["PI_CODING_AGENT_SESSION_DIR"])
+             if os.environ.get("PI_CODING_AGENT_SESSION_DIR")
+             else home() / ".pi")
+    if pidir.is_dir():
+        s.pi_home = pidir
     return apply_overrides(s)
 
 
@@ -158,6 +235,15 @@ def bind_override(source: str, raw: str, save: bool = True) -> dict:
                    ["User/globalStorage/state.vscdb", "globalStorage/state.vscdb", "state.vscdb"], None, False),
         "trae": ("trae_global_db", True,
                  ["User/globalStorage/state.vscdb", "globalStorage/state.vscdb", "state.vscdb"], None, False),
+        "minimax": ("minimax_home", False, ["v2/sqlite/runtime-state.sqlite"],
+                    lambda d: (d / "v2" / "sqlite" / "runtime-state.sqlite").is_file(), True),
+        "mimo": ("mimo_home", False, ["."], lambda d: d.is_dir(), True),
+        "kimi": ("kimi_home", False, ["."], lambda d: d.is_dir(), True),
+        "grok": ("grok_home", False, ["sessions"], lambda d: d.name == ".grok" or (d / "sessions").is_dir(), True),
+        "copilot": ("copilot_home", False, ["."], lambda d: d.is_dir(), True),
+        "gemini": ("gemini_home", False, ["."], lambda d: d.is_dir(), True),
+        "cline": ("cline_home", False, ["."], lambda d: d.is_dir(), True),
+        "pi": ("pi_home", False, ["agent/sessions"], lambda d: (d / "agent" / "sessions").is_dir() or d.name == ".pi", True),
     }
     if source not in rules:
         return {"ok": False, "detail": f"未知源 {source}"}

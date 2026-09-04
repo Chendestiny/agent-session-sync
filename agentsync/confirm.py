@@ -10,9 +10,9 @@ from __future__ import annotations
 import re
 import sys
 
-# 默认同步源（dsh 是目标不是源）
+# 默认同步源（dsh 是目标不是源；mimo/kimi/grok/copilot/gemini/cline/pi 占位无 reader，0 会话不产出）
 SYNC_SOURCES = ["zcode", "hermes", "codex", "workbuddy", "claude", "opencode", "qoder", "openclaw",
-                "cursor", "trae"]
+                "cursor", "trae", "mimo", "kimi", "minimax", "grok", "copilot", "gemini", "cline", "pi"]
 
 # 非交互缺参时的教学文案（sync.py / sync-finish.py 共用）
 NONINTERACTIVE_HELP = (

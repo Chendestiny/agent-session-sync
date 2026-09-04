@@ -1629,10 +1629,426 @@ def read_cursor(db_path, include_archived: bool = False) -> list[Session]:
 
 
 def read_trae(db_path, include_archived: bool = False) -> list[Session]:
-    """Trae（字节 AI IDE，VS Code 系 fork）会话。布局对齐 Cursor；本机 Trae CN
-    残留实测 chat index 为空（卸载清空），cursorDiskKV 引擎兜底——重装后需实机
-    核验真实正文格式（detect 认 Trae 与 Trae CN 两种目录名）。"""
+    """Trae（字节 AI IDE，VS Code 系 fork）会话。2026-09-03 重装实测：当前 Trae CN
+    的 globalStorage state.vscdb 里**没有** cursorDiskKV 表（旧「布局对齐 Cursor」
+    是空壳年代的误判），会话正典在 ModularData/ai-agent/database.db 且整库自加密
+    （无 SQLite 头，WAL 帧亦密文，非标准 SQLCipher）——离线读取被加密阻断。
+    本引擎仅对旧版/国际版 Cursor 布局有效，读当前 CN 版返回空，详见
+    docs/agents/trae.md。"""
     return _read_vscode_kv_chat(db_path, "trae", include_archived)
+
+
+def _mm_is_import(sid: str) -> bool:
+    """minimax 导入判别：id=mvs_<32hex>，原生是 uuidv4，agentsync 铸的是 uuidv5。"""
+    h = sid[4:] if sid.startswith("mvs_") else ""
+    if len(h) != 32:
+        return False
+    try:
+        return uuid.UUID(h).version == 5
+    except ValueError:
+        return False
+
+
+def read_minimax(minimax_home, include_archived: bool = False,
+                 include_imports: bool = False,
+                 include_subagents: bool = False) -> list[Session]:
+    """MiniMax Code（Xiaomi MiniMax 的 agentic coding workspace，内置 agent Mavis）。
+
+    ~/.minimax/v2/sqlite/runtime-state.sqlite：v2 为注册表+列存投影布局，
+    local_runtime_sessions 存会话头（title/workspace_dir/archived/parent_session_id），
+    local_runtime_message_rows 存消息（data_json 内 msg_content / thinking_content，
+    按 turn_id 分轮）。内置 agent（mavis/explore/worker/verifier）的 Main 引导壳
+    没有消息行，天然不出现；子代理 = parent_session_id 非空，默认排除。
+    导入判别 = mvs_id 的 uuid 版本位（原生 v4 / agentsync v5）。
+    工具调用形态待实机出现后核验（本机首条会话纯文本）。
+    """
+    db = os.path.join(str(minimax_home), "v2", "sqlite", "runtime-state.sqlite")
+    if not os.path.isfile(db):
+        return []
+    con = sqlite3.connect(f"file:{db.replace(chr(92), '/')}?mode=ro", uri=True)
+    try:
+        heads: dict[str, dict] = {}
+        for sid, title, cwd, created, updated, arch, parent in con.execute(
+            "SELECT session_id, title, workspace_dir, created_at_ms, updated_at_ms,"
+            " archived, parent_session_id FROM local_runtime_sessions"
+        ):
+            heads[sid] = {"title": title, "cwd": cwd, "created": int(created or 0),
+                          "updated": int(updated or 0), "archived": bool(arch),
+                          "parent": parent}
+        # 消息按自增 id 即插入序读入，按会话分桶
+        msgs: dict[str, list] = {sid: [] for sid in heads}
+        for sid, role, turn_id, ts, data_json in con.execute(
+            "SELECT session_id, role, turn_id, created_at_ms, data_json"
+            " FROM local_runtime_message_rows ORDER BY id"
+        ):
+            if sid in msgs:
+                msgs[sid].append((role, turn_id, int(ts or 0), data_json))
+    finally:
+        con.close()
+
+    out: list[Session] = []
+    for sid, rows in msgs.items():
+        h = heads.get(sid, {})
+        if not rows:
+            continue  # 引导壳/空会话
+        if h.get("archived") and not include_archived:
+            continue
+        if h.get("parent") and not include_subagents:
+            continue
+        if not include_imports and _mm_is_import(sid):
+            continue  # agentsync 导入不回流（原生 mvs id 是 uuidv4）
+        turns: list[Turn] = []
+        cur: Turn | None = None
+        for role, turn_id, ts, data_json in rows:
+            try:
+                d = json.loads(data_json) if data_json else {}
+            except json.JSONDecodeError:
+                d = {}
+            if role == "user":
+                text = d.get("msg_content")
+                text = text if isinstance(text, str) else ""
+                if text:
+                    cur = Turn(prompt=text, time=ts)
+                    turns.append(cur)
+            elif role == "assistant" and cur is not None:
+                step = Step()
+                think = d.get("thinking_content")
+                if isinstance(think, str) and think.strip():
+                    step.content.append({"type": "reasoning", "text": think})
+                body = d.get("msg_content")
+                if isinstance(body, str) and body.strip():
+                    step.content.append({"type": "text", "text": body})
+                elif isinstance(body, list):
+                    for b in body:
+                        if isinstance(b, dict) and b.get("type") in ("text", "output_text") \
+                                and isinstance(b.get("text"), str):
+                            step.content.append({"type": "text", "text": b["text"]})
+                if step.content:
+                    cur.steps.append(step)
+        if not turns:
+            continue
+        created = h.get("created") or (turns[0].time if turns else 0)
+        out.append(
+            Session(
+                source="minimax",
+                source_id=sid,
+                title=h.get("title") or "",
+                cwd=h.get("cwd"),
+                created_at=created,
+                updated_at=h.get("updated") or max((t.time for t in turns), default=0) or created,
+                model=None,
+                turns=turns,
+                source_path=db,
+                subagent=bool(h.get("parent")),
+            )
+        )
+    return out
+
+
+def _pi_sessions_root(pi_home) -> str:
+    """pi 会话根：<home>/agent/sessions；兼容直接绑了 sessions 目录本身的情况
+    （PI_CODING_AGENT_SESSION_DIR 探测路径）。"""
+    h = str(pi_home)
+    cand = os.path.join(h, "agent", "sessions")
+    if os.path.isdir(cand):
+        return cand
+    return h
+
+
+def read_pi(pi_home, include_imports: bool = False) -> list[Session]:
+    """Pi Agent Harness（@earendil-works/pi-coding-agent；minimax 的 pi-agent 同源运行时）。
+
+    ~/.pi/agent/sessions/<cwd编码>/<时间戳>_<uuid>.jsonl：事件流 JSONL（v3）——
+    首行 type=session（id/cwd/timestamp），后续 model_change/thinking_level_change/
+    message 事件。message.message 形状（源码 packages/ai/src/types.ts）：
+    user={role,content:[{type:text,text}]}；assistant={content:[text/thinking/toolCall]，
+    thinking 块字段是 thinking，toolCall.arguments 是对象}；toolResult={toolCallId,
+    toolName,content:[text]}。assistant stopReason=error 且无内容时跳过。
+    """
+    root = _pi_sessions_root(pi_home)
+    out: list[Session] = []
+    for path in sorted(glob.glob(os.path.join(root, "*", "*.jsonl"))):
+        try:
+            lines = _parse_jsonl(open(path, encoding="utf-8").read())
+        except OSError:
+            continue
+        head = next((o for o in lines if o.get("type") == "session"), None)
+        if head is None:
+            continue
+        turns: list[Turn] = []
+        cur: Turn | None = None
+        call_steps: dict[str, Step] = {}
+        last_ms = 0
+        for ev in lines:
+            if ev.get("type") != "message":
+                continue
+            m = ev.get("message") or {}
+            role = m.get("role")
+            ts = _ms(m.get("timestamp"), _ms(ev.get("timestamp")))
+            if ts > last_ms:
+                last_ms = ts
+            if role == "user":
+                texts = [b.get("text", "") for b in (m.get("content") or [])
+                         if isinstance(b, dict) and b.get("type") == "text"]
+                text = "\n".join(t for t in texts if t)
+                if not text:
+                    continue
+                cur = Turn(prompt=text, time=ts)
+                turns.append(cur)
+            elif role == "assistant" and cur is not None:
+                step = Step(model=m.get("model"))
+                for b in m.get("content") or []:
+                    if not isinstance(b, dict):
+                        continue
+                    bt = b.get("type")
+                    if bt == "text" and isinstance(b.get("text"), str) and b["text"].strip():
+                        step.content.append({"type": "text", "text": b["text"]})
+                    elif bt == "thinking" and isinstance(b.get("thinking"), str) and b["thinking"].strip():
+                        step.content.append({"type": "reasoning", "text": b["thinking"]})
+                    elif bt == "toolCall":
+                        args = b.get("arguments")
+                        args_text = args if isinstance(args, str) else json.dumps(
+                            args if args is not None else {}, ensure_ascii=False)
+                        mapped = {"id": str(b.get("id") or ""), "name": str(b.get("name") or "unknown"),
+                                  "arguments": args_text}
+                        step.content.append({"type": "tool-call", **mapped})
+                        step.tool_calls.append(mapped)
+                if not step.content and not step.tool_calls:
+                    continue  # error/空回复
+                cur.steps.append(step)
+                for tc in step.tool_calls:
+                    call_steps[tc["id"]] = step
+            elif role == "toolResult":
+                step = call_steps.get(str(m.get("toolCallId") or ""))
+                if step is None:
+                    continue
+                texts = [b.get("text", "") for b in (m.get("content") or [])
+                         if isinstance(b, dict) and b.get("type") == "text"]
+                step.tool_results.append(ToolResult(
+                    str(m.get("toolCallId") or ""),
+                    [{"type": "text", "text": "\n".join(t for t in texts if t)}],
+                    False))
+        if not turns:
+            continue
+        if not include_imports and _is_agentsync_uuid5(head.get("id")):
+            continue  # agentsync 导入不回流（原生 id 是 uuidv7）
+        created = _ms(head.get("timestamp")) or turns[0].time
+        cwd = head.get("cwd")
+        title = (turns[0].prompt or "").strip()[:40]
+        out.append(
+            Session(
+                source="pi",
+                source_id=str(head.get("id") or os.path.basename(path)),
+                title=title,
+                cwd=cwd,
+                created_at=created,
+                updated_at=last_ms or created,
+                model=None,
+                turns=turns,
+                source_path=path,
+            )
+        )
+    return out
+
+
+_GEMINI_CTX_SKIP = ("<session_context>", "<environment_context>", "<system_reminder>")
+
+
+def _gem_block_text(blocks) -> str:
+    """gemini content 块取文本：实测有 {text} 字典 part（源码形状）与**纯字符串碎片**
+    （流式分片，中转站/不同版本路径）两种形态——统一拼出完整文本。"""
+    parts = []
+    for b in blocks or []:
+        if isinstance(b, dict) and isinstance(b.get("text"), str):
+            parts.append(b["text"])
+        elif isinstance(b, str):
+            parts.append(b)
+    return "".join(parts)
+
+
+def _gemini_cwd_from_context(text: str) -> str | None:
+    m = re.search(r"Workspace Directories:\*\*\s*\r?\n\s*-\s*(.+)", text or "")
+    return m.group(1).strip() if m else None
+
+
+def read_gemini(gemini_home, include_imports: bool = False) -> list[Session]:
+    """Gemini CLI（Google）：~/.gemini/tmp/<项目标识>/chats/session-*.json(.jsonl)。
+
+    行形状（源码 chatRecordingService）：首行会话头（kind=main，sessionId/startTime），
+    初始 `$set:{messages}` 快照，此后每条消息是**裸对象行**（id/timestamp/type/content），
+    其间穿插 `$set:{lastUpdated|memoryScratchpad}`。消息 type=user（含 <session_context>
+    注入块，读时跳过并从中反解 cwd）/ gemini（模型回复：content=[{text}]，
+    thoughts=[{subject,text}] 思维链，model/tokens 元数据）。
+    """
+    root = os.path.join(str(gemini_home), "tmp")
+    out: list[Session] = []
+    for path in sorted(glob.glob(os.path.join(root, "*", "chats", "session-*.json*"))):
+        try:
+            if path.endswith(".jsonl"):
+                lines = _parse_jsonl(open(path, encoding="utf-8").read())
+            else:
+                lines = [json.load(open(path, encoding="utf-8"))]
+        except (OSError, ValueError):
+            continue
+        head = next((o for o in lines if isinstance(o, dict) and o.get("kind") == "main"), {})
+        msgs: list = []
+        cwd = None
+        for o in lines:
+            if not isinstance(o, dict):
+                continue
+            if "$set" in o:
+                s = o["$set"] or {}
+                if isinstance(s.get("messages"), list):
+                    msgs = list(s["messages"])
+                continue
+            if "kind" in o or "messages" in o or "lastUpdated" in o:
+                continue
+            if o.get("type") in ("user", "gemini") and ("content" in o or "thoughts" in o):
+                msgs.append(o)
+        turns: list[Turn] = []
+        cur: Turn | None = None
+        last_ms = 0
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+            ts = _ms(m.get("timestamp"))
+            if ts > last_ms:
+                last_ms = ts
+            role = m.get("type")
+            if role == "user":
+                text = _gem_block_text(m.get("content"))
+                if not text.strip():
+                    continue
+                if text.lstrip().startswith(_GEMINI_CTX_SKIP):
+                    if cwd is None:
+                        cwd = _gemini_cwd_from_context(text)
+                    continue
+                cur = Turn(prompt=text, time=ts)
+                turns.append(cur)
+            elif role == "gemini" and cur is not None:
+                step = Step(model=m.get("model"))
+                for th in m.get("thoughts") or []:
+                    if isinstance(th, dict) and isinstance(th.get("text"), str) and th["text"].strip():
+                        step.content.append({"type": "reasoning", "text": th["text"]})
+                body = _gem_block_text(m.get("content"))
+                if body.strip():
+                    step.content.append({"type": "text", "text": body})
+                if step.content:
+                    cur.steps.append(step)
+        if not turns:
+            continue
+        if not include_imports and _is_agentsync_uuid5(head.get("sessionId")):
+            continue  # agentsync 导入不回流（原生 sessionId 是 uuidv4）
+        created = _ms(head.get("startTime")) or turns[0].time
+        sid = str(head.get("sessionId") or os.path.basename(path))
+        out.append(
+            Session(
+                source="gemini",
+                source_id=sid,
+                title=(turns[0].prompt or "").strip()[:40],
+                cwd=cwd,
+                created_at=created,
+                updated_at=last_ms or created,
+                model=None,
+                turns=turns,
+                source_path=path,
+            )
+        )
+    return out
+
+
+def read_cline(cline_home, include_imports: bool = False) -> list[Session]:
+    """Cline（VS Code 扩展）：globalStorage/saoudrizwan.claude-dev/tasks/<ts>/。
+
+    ui_messages.json = UI 事件流（say=task 首问 / user_feedback 追问开轮；
+    reasoning 思维链；completion_result 终答；checkpoint/api_req 等噪音忽略，
+    partial=true 的流式碎块跳过）。cwd 从 api_conversation_history.json 的
+    `Working Directory (d:\\…)` 反解；model 取 task_metadata.model_usage。
+    工具类 say（tool/command_execution 等）待真实编码任务出现后核验升级。
+    """
+    root = os.path.join(str(cline_home), "tasks")
+    if not include_imports:
+        from .clinewrite import import_ids as _cl_import_ids
+        imports = _cl_import_ids(cline_home)
+    else:
+        imports = set()
+    out: list[Session] = []
+    for tdir in sorted(glob.glob(os.path.join(root, "*"))):
+        if os.path.basename(tdir) in imports:
+            continue  # agentsync 导入不回流（任务 id=时间戳无形状，靠旁路清单）
+        ui_path = os.path.join(tdir, "ui_messages.json")
+        if not os.path.isfile(ui_path):
+            continue
+        try:
+            ui = json.load(open(ui_path, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(ui, list):
+            continue
+        cwd = None
+        model = None
+        api_path = os.path.join(tdir, "api_conversation_history.json")
+        if os.path.isfile(api_path):
+            try:
+                api = json.load(open(api_path, encoding="utf-8"))
+                for am in api if isinstance(api, list) else []:
+                    for b in (am.get("content") or []):
+                        if isinstance(b, dict) and isinstance(b.get("text"), str):
+                            m = re.search(r"Working Directory \(([^)]+)\)", b["text"])
+                            if m:
+                                cwd = m.group(1).strip().replace("/", "\\")
+                                break
+                    if cwd:
+                        break
+            except (OSError, ValueError):
+                pass
+        try:
+            meta = json.load(open(os.path.join(tdir, "task_metadata.json"), encoding="utf-8"))
+            mu = (meta.get("model_usage") or [{}])[0]
+            model = mu.get("model_id")
+        except (OSError, ValueError, IndexError):
+            pass
+        turns: list[Turn] = []
+        cur: Turn | None = None
+        last_ms = 0
+        for ev in ui:
+            if not isinstance(ev, dict) or ev.get("partial"):
+                continue
+            ts = _ms(ev.get("ts"))
+            if ts > last_ms:
+                last_ms = ts
+            say = ev.get("say")
+            text = ev.get("text")
+            if not isinstance(text, str):
+                text = ""
+            if say in ("task", "user_feedback") and text.strip():
+                cur = Turn(prompt=text, time=ts)
+                turns.append(cur)
+            elif say == "reasoning" and cur is not None and text.strip():
+                if not cur.steps:
+                    cur.steps.append(Step(model=model))
+                cur.steps[0].content.append({"type": "reasoning", "text": text})
+            elif say == "completion_result" and cur is not None and text.strip():
+                step = Step(model=model)
+                step.content.append({"type": "text", "text": text})
+                cur.steps.append(step)
+        if not turns:
+            continue
+        created = _ms(ui[0].get("ts")) if isinstance(ui[0], dict) else turns[0].time
+        out.append(
+            Session(
+                source="cline",
+                source_id=os.path.basename(tdir),
+                title=(turns[0].prompt or "").strip()[:40],
+                cwd=cwd,
+                created_at=created or turns[0].time,
+                updated_at=last_ms or created,
+                model=model,
+                turns=turns,
+                source_path=ui_path,
+            )
+        )
+    return out
 
 
 def load_sources(which, p):
@@ -1660,4 +2076,12 @@ def load_sources(which, p):
         loaded["cursor"] = read_cursor(p.cursor_global_db)
     if "trae" in which and p.trae_global_db:
         loaded["trae"] = read_trae(p.trae_global_db)
+    if "minimax" in which and p.minimax_home:
+        loaded["minimax"] = read_minimax(p.minimax_home)
+    if "pi" in which and p.pi_home:
+        loaded["pi"] = read_pi(p.pi_home)
+    if "gemini" in which and p.gemini_home:
+        loaded["gemini"] = read_gemini(p.gemini_home)
+    if "cline" in which and p.cline_home:
+        loaded["cline"] = read_cline(p.cline_home)
     return loaded

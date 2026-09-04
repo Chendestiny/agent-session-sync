@@ -33,7 +33,7 @@ from agentsync import archive as archive_mod
 from agentsync import confirm, dshwrite, paths, readers, syncstate
 
 ALL_SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "claude", "opencode", "qoder", "openclaw",
-               "cursor", "trae"]
+               "cursor", "trae", "mimo", "kimi", "minimax", "grok", "copilot", "gemini", "cline", "pi"]
 
 
 def _fmt_ts(ms: int) -> str:
@@ -124,6 +124,14 @@ def cmd_status(args):
     print(f"  openclaw home  : {p.openclaw_home or '未找到'}")
     print(f"  cursor db      : {p.cursor_global_db or '未找到'}")
     print(f"  trae db        : {p.trae_global_db or '未找到'}")
+    print(f"  mimo home      : {p.mimo_home or '未找到'}")
+    print(f"  kimi home      : {p.kimi_home or '未找到'}")
+    print(f"  minimax home   : {p.minimax_home or '未找到'}")
+    print(f"  grok home      : {p.grok_home or '未找到'}")
+    print(f"  copilot user   : {p.copilot_home or '未找到'}")
+    print(f"  gemini home    : {p.gemini_home or '未找到'}")
+    print(f"  cline home     : {p.cline_home or '未找到'}")
+    print(f"  pi home        : {p.pi_home or '未找到'}")
     if args.verbose:
         return
     loaded = load_sources(ALL_SOURCES, p)
@@ -333,12 +341,13 @@ def cmd_push(args):
     """push：规范库 C → 目标 agent。幂等断点续推（C 内每目标水位文件）；
     写 agent 存储照旧两道确认 + 历史全量拦截；换任何 agent 重跑自动从断点继续。
     """
-    from agentsync import claudewrite, codexwrite, hermeswrite, opencodewrite, store, workbuddywrite
+    from agentsync import claudewrite, clinewrite, codexwrite, geminiwrite, hermeswrite, minimaxwrite, opencodewrite, piwrite, store, workbuddywrite
 
     if not store.store_exists():
         sys.exit("规范库 C 为空：先跑 python sync.py pull")
     writers = {"dsh": dshwrite, "codex": codexwrite, "claude": claudewrite, "hermes": hermeswrite,
-               "opencode": opencodewrite, "workbuddy": workbuddywrite}
+               "opencode": opencodewrite, "workbuddy": workbuddywrite, "minimax": minimaxwrite,
+               "pi": piwrite, "gemini": geminiwrite, "cline": clinewrite}
     getters = {
         "dsh": lambda p: p.dsh_sessions,
         "codex": lambda p: p.codex_sessions,
@@ -346,6 +355,10 @@ def cmd_push(args):
         "hermes": lambda p: p.hermes_db,
         "opencode": lambda p: p.opencode_db,
         "workbuddy": lambda p: p.workbuddy_home,
+        "minimax": lambda p: p.minimax_home,
+        "pi": lambda p: p.pi_home,
+        "gemini": lambda p: p.gemini_home,
+        "cline": lambda p: p.cline_home,
     }
     target = args.target
     _run_sink(
@@ -391,6 +404,30 @@ def cmd_to_workbuddy(args):
     from agentsync import workbuddywrite as _w
 
     _run_sink(args, "workbuddy", lambda p: p.workbuddy_home, _w)
+
+
+def cmd_to_minimax(args):
+    from agentsync import minimaxwrite as _w
+
+    _run_sink(args, "minimax", lambda p: p.minimax_home, _w)
+
+
+def cmd_to_pi(args):
+    from agentsync import piwrite as _w
+
+    _run_sink(args, "pi", lambda p: p.pi_home, _w)
+
+
+def cmd_to_gemini(args):
+    from agentsync import geminiwrite as _w
+
+    _run_sink(args, "gemini", lambda p: p.gemini_home, _w)
+
+
+def cmd_to_cline(args):
+    from agentsync import clinewrite as _w
+
+    _run_sink(args, "cline", lambda p: p.cline_home, _w)
 
 
 def cmd_archive(args):
@@ -872,6 +909,193 @@ def cmd_selftest(args):
     check(bool(len(ts_r) == 1 and ts_r[0].source == "trae" and ts_r[0].title == "你好 trae" and ts_r[0].turns[0].steps),
           "trae：同 cursorDiskKV 引擎读回（布局对齐 Cursor，待实机核验）")
 
+    # minimax（MiniMax Code）：v2 runtime-state.sqlite 注册表 + 消息行
+    from agentsync.readers import read_minimax
+    mm_db = os.path.join(box, "minimax-home", "v2", "sqlite", "runtime-state.sqlite")
+    os.makedirs(os.path.dirname(mm_db), exist_ok=True)
+    con = sqlite3.connect(mm_db)
+    con.executescript(
+        "CREATE TABLE local_runtime_sessions (session_id TEXT PRIMARY KEY, title TEXT,"
+        " workspace_dir TEXT, created_at_ms INTEGER, updated_at_ms INTEGER, archived INTEGER,"
+        " parent_session_id TEXT);"
+        "CREATE TABLE local_runtime_message_rows (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " session_id TEXT, msg_id TEXT, role TEXT, turn_id TEXT, created_at_ms INTEGER, data_json TEXT);"
+    )
+    for sid, title, ws, arch, parent in (
+        ("mvs_main", "Main", "C:/Users/u/.minimax/sessions", 0, None),      # 内置 agent 引导壳（无消息）
+        ("mvs_real", "确认是否 minimax", "D:/mm", 0, None),
+        ("mvs_arch", "归档会话", "D:/mm", 1, None),
+        ("mvs_sub", "子代理分支", "D:/mm", 0, "mvs_real"),
+    ):
+        con.execute("INSERT INTO local_runtime_sessions VALUES (?,?,?,?,?,?,?)",
+                    (sid, title, ws, 1788417300000, 1788417400000, arch, parent))
+    con.executemany(
+        "INSERT INTO local_runtime_message_rows (session_id,msg_id,role,turn_id,created_at_ms,data_json)"
+        " VALUES (?,?,?,?,?,?)",
+        [("mvs_real", "mu1", "user", "t1", 1788417340360,
+          '{"role":"user","msg_content":"你是minimax吗？","msg_type":1}'),
+         ("mvs_real", "ma1", "assistant", "t1", 1788417346895,
+          '{"role":"assistant","msg_content":"不是 minimax 我是 Mavis","thinking_content":"用户在问身份","msg_type":1}'),
+         ("mvs_arch", "au1", "user", "ta", 1788417300000, '{"role":"user","msg_content":"归档"}'),
+         ("mvs_sub", "su1", "user", "ts", 1788417300000, '{"role":"user","msg_content":"分支"}')],
+    )
+    con.commit()
+    con.close()
+    mm = read_minimax(os.path.join(box, "minimax-home"))
+    check(len(mm) == 1 and mm[0].source_id == "mvs_real" and mm[0].title == "确认是否 minimax",
+          "minimax：读回真实会话（引导壳无消息不出现，归档/子代理默认排除）")
+    check(mm[0].source == "minimax" and mm[0].cwd == "D:/mm" and mm[0].turns[0].prompt == "你是minimax吗？"
+          and [b["type"] for b in mm[0].turns[0].steps[0].content] == ["reasoning", "text"]
+          and mm[0].turns[0].steps[0].content[1]["text"] == "不是 minimax 我是 Mavis",
+          "minimax：thinking→reasoning 块在前、正文 text 块在后")
+    check(read_minimax(os.path.join(box, "minimax-home"), include_archived=True,
+                       include_subagents=True).__len__() == 3, "minimax：include_archived/subagents 放出归档与分支")
+
+    # pi（Pi Agent Harness）：事件流 JSONL（session 头 + message 事件，形状取自源码 types.ts）
+    from agentsync.readers import read_pi
+    pi_sess = os.path.join(box, "pi-home", "agent", "sessions", "--D--t--",
+                           "2026-09-03T09-31-48-717Z_01a0669c-366c-7485-8a89-0f9bc98e3461.jsonl")
+    os.makedirs(os.path.dirname(pi_sess), exist_ok=True)
+    pi_lines = [
+        {"type": "session", "version": 3, "id": "01a0669c-366c-7485-8a89-0f9bc98e3461",
+         "timestamp": "2026-09-03T09:31:48.717Z", "cwd": "D:\\t"},
+        {"type": "model_change", "id": "ad81", "parentId": None,
+         "timestamp": "2026-09-03T09:31:48.936Z", "provider": "anthropic", "modelId": "claude-x"},
+        {"type": "message", "id": "dcc7", "parentId": "ad81", "timestamp": "2026-09-03T09:31:48.947Z",
+         "message": {"role": "user", "content": [{"type": "text", "text": "pi 第一问"}],
+                     "timestamp": 1788427908946}},
+        {"type": "message", "id": "169b", "parentId": "dcc7", "timestamp": "2026-09-03T09:31:50.022Z",
+         "message": {"role": "assistant", "model": "claude-x",
+                     "content": [{"type": "thinking", "thinking": "想想"},
+                                 {"type": "text", "text": "pi 第一答"},
+                                 {"type": "toolCall", "id": "tc1", "name": "Bash",
+                                  "arguments": {"command": "echo hi"}}],
+                     "usage": {"input": 1, "output": 1, "totalTokens": 2}, "stopReason": "stop",
+                     "timestamp": 1788427909133}},
+        {"type": "message", "id": "toolr", "parentId": "169b", "timestamp": "2026-09-03T09:31:51.022Z",
+         "message": {"role": "toolResult", "toolCallId": "tc1", "toolName": "Bash",
+                     "content": [{"type": "text", "text": "hi"}]}},
+        {"type": "message", "id": "err1", "parentId": "toolr", "timestamp": "2026-09-03T09:31:52.022Z",
+         "message": {"role": "assistant", "model": "claude-x", "content": [],
+                     "stopReason": "error", "timestamp": 1788427912022}},
+    ]
+    with open(pi_sess, "w", encoding="utf-8") as f:
+        for ln in pi_lines:
+            f.write(json.dumps(ln, ensure_ascii=False) + "\n")
+    pis = read_pi(os.path.join(box, "pi-home"))
+    check(len(pis) == 1 and pis[0].source == "pi" and pis[0].title == "pi 第一问"
+          and pis[0].cwd == "D:\\t",
+          "pi：事件流读回（标题=首问，cwd 取 session 头）")
+    pst = pis[0].turns[0].steps[0]
+    check([b["type"] for b in pst.content] == ["reasoning", "text", "tool-call"]
+          and pst.tool_calls[0]["name"] == "Bash"
+          and pst.tool_results[0].content[0]["text"] == "hi"
+          and len(pis[0].turns[0].steps) == 1,
+          "pi：thinking→reasoning、toolCall+toolResult 配对、error 空回复跳过")
+
+    # ── 三新写入器沙箱回路（gemini / pi / cline：create→追加→幂等→防回流）──
+    from agentsync import clinewrite, geminiwrite, piwrite
+    from agentsync.readers import read_cline, read_gemini  # noqa: F811（后文读取夹具复用）
+
+    gw_home = os.path.join(box, "gw-home")
+    g1 = geminiwrite.plan_write(gw_home, fake(), None)
+    check(g1["action"] == "create", "gemini：计划 create")
+    geminiwrite.apply_write(g1)
+    gback = read_gemini(gw_home, include_imports=True)
+    check(len(gback) == 1 and gback[0].turns[0].prompt == "第一问：你好"
+          and gback[0].turns[0].steps[0].content[-1]["text"] == "第一答",
+          "gemini：写入读回（$set+裸行，回复完整）")
+    geminiwrite.apply_write(geminiwrite.plan_write(gw_home, fake(v2=True), None))
+    gback2 = read_gemini(gw_home, include_imports=True)
+    check(len(gback2[0].turns) == 2, "gemini：新轮追加")
+    check(geminiwrite.plan_write(gw_home, fake(v2=True), None)["action"] == "up-to-date", "gemini：三次 up-to-date")
+    check(read_gemini(gw_home) == [], "gemini：uuid5 导入不回流（防 A→gemini→A 成环）")
+
+    pw_home = os.path.join(box, "pw-home")
+    p1 = piwrite.plan_write(pw_home, fake(), None)
+    check(p1["action"] == "create", "pi：计划 create")
+    piwrite.apply_write(p1)
+    pback = read_pi(pw_home, include_imports=True)
+    check(len(pback) == 1 and pback[0].title == "第一问：你好"
+          and pback[0].turns[0].steps[0].content[0]["type"] == "reasoning",
+          "pi：写入读回（事件流 + thinking 块；pi 无标题存储，标题=首问推导）")
+    piwrite.apply_write(piwrite.plan_write(pw_home, fake(v2=True), None))
+    pback2 = read_pi(pw_home, include_imports=True)
+    check(len(pback2[0].turns) == 2 and pback2[0].turns[1].steps[0].tool_calls[0]["name"] == "Bash",
+          "pi：新轮追加含工具调用")
+    check(piwrite.plan_write(pw_home, fake(v2=True), None)["action"] == "up-to-date", "pi：三次 up-to-date")
+    check(read_pi(pw_home) == [], "pi：uuid5 导入不回流（防 A→pi→A 成环）")
+
+    cw_home = os.path.join(box, "cw-home")
+    os.makedirs(os.path.join(cw_home, "tasks"), exist_ok=True)
+    c1 = clinewrite.plan_write(cw_home, fake(), None)
+    check(c1["action"] == "create", "cline：计划 create")
+    clinewrite.apply_write(c1)
+    cback = read_cline(cw_home, include_imports=True)
+    check(len(cback) == 1 and cback[0].turns[0].prompt == "第一问：你好"
+          and cback[0].turns[0].steps[-1].content[0]["text"] == "第一答"
+          and cback[0].cwd == fake().cwd,
+          "cline：三件 JSON 写入读回（cwd 从 api 环境块反解）")
+    clinewrite.apply_write(clinewrite.plan_write(cw_home, fake(v2=True), None))
+    cback2 = read_cline(cw_home, include_imports=True)
+    check(len(cback2[0].turns) == 2, "cline：新轮追加")
+    check(clinewrite.plan_write(cw_home, fake(v2=True), None)["action"] == "up-to-date", "cline：三次 up-to-date")
+    check(read_cline(cw_home) == [], "cline：旁路清单导入不回流（防 A→cline→A 成环）")
+
+    # gemini（Gemini CLI）：chats jsonl（$set 快照 + 裸消息行 + gemini 回复含 thoughts）
+    from agentsync.readers import read_gemini
+    gem_sess = os.path.join(box, "gem-home", "tmp", "t", "chats",
+                            "session-2026-09-03T09-37-ad29318a.jsonl")
+    os.makedirs(os.path.dirname(gem_sess), exist_ok=True)
+    gem_lines = [
+        {"sessionId": "ad29318a-e329-4a51-873b-7a568c2f3510", "kind": "main",
+         "startTime": "2026-09-03T09:37:01.152Z", "lastUpdated": "2026-09-03T09:37:01.152Z"},
+        {"$set": {"messages": [{"id": "m0", "timestamp": "2026-09-03T09:37:01.153Z", "type": "user",
+                                "content": [{"text": "<session_context>\n**Workspace Directories:**\n  - D:\\t\n更多上下文"}]}]}},
+        {"id": "m1", "timestamp": "2026-09-03T09:37:17.253Z", "type": "user",
+         "content": [{"text": "gemini 第一问"}]},
+        {"id": "m2", "timestamp": "2026-09-03T09:37:19.253Z", "type": "gemini", "model": "gemini-x",
+         "content": [{"text": "gemini 第一答"}],
+         "thoughts": [{"subject": "s", "text": "gemini 想"}]},
+        {"$set": {"lastUpdated": "2026-09-03T09:37:19.253Z"}},
+    ]
+    with open(gem_sess, "w", encoding="utf-8") as f:
+        for ln in gem_lines:
+            f.write(json.dumps(ln, ensure_ascii=False) + "\n")
+    gs = read_gemini(os.path.join(box, "gem-home"))
+    check(len(gs) == 1 and gs[0].title == "gemini 第一问" and gs[0].cwd == "D:\\t",
+          "gemini：读回（session_context 跳过并反解 cwd，标题=首问）")
+    check([b["type"] for b in gs[0].turns[0].steps[0].content] == ["reasoning", "text"],
+          "gemini：thoughts→reasoning 在前、正文 text 在后")
+
+    # cline（VS Code 扩展）：tasks/<ts>/ 的 ui_messages + api 反解 cwd
+    from agentsync.readers import read_cline
+    ct = os.path.join(box, "cl-home", "tasks", "1788427457151")
+    os.makedirs(ct, exist_ok=True)
+    json.dump([
+        {"ts": 1788427457156, "say": "task", "text": "cline 第一问"},
+        {"ts": 1788427466788, "say": "checkpoint_created", "text": ""},
+        {"ts": 1788427489282, "say": "reasoning", "text": "cline 想", "partial": False},
+        {"ts": 1788427489300, "say": "reasoning", "text": "流式碎块", "partial": True},
+        {"ts": 1788427505771, "say": "completion_result", "text": "cline 第一答"},
+        {"ts": 1788427532960, "say": "user_feedback", "text": "cline 第二问"},
+        {"ts": 1788427545130, "say": "completion_result", "text": "cline 第二答"},
+    ], open(os.path.join(ct, "ui_messages.json"), "w", encoding="utf-8"), ensure_ascii=False)
+    json.dump({"model_usage": [{"ts": 1, "model_id": "deepseek-x", "mode": "act"}]},
+              open(os.path.join(ct, "task_metadata.json"), "w", encoding="utf-8"))
+    json.dump([{"role": "user", "content": [{"type": "text",
+                "text": "... Working Directory (d:/t) Files\nx.js ..."}]}],
+              open(os.path.join(ct, "api_conversation_history.json"), "w", encoding="utf-8"))
+    cs = read_cline(os.path.join(box, "cl-home"))
+    check(len(cs) == 1 and cs[0].title == "cline 第一问" and cs[0].cwd == "d:\\t"
+          and cs[0].model == "deepseek-x",
+          "cline：ui 事件流读回（cwd 从 api 历史反解、model 取 metadata）")
+    check(len(cs[0].turns) == 2
+          and [b["type"] for b in cs[0].turns[0].steps[0].content] == ["reasoning"]
+          and cs[0].turns[0].steps[-1].content[0]["text"] == "cline 第一答"
+          and len(cs[0].turns[0].steps[0].content) == 1,
+          "cline：task/user_feedback 开轮、reasoning/completion_result 成步、partial 碎块跳过")
+
     # zcode：归档（time_archived）必须被排除——回收站不同步铁律
     zc_db = os.path.join(box, "zcode.db")
     con = sqlite3.connect(zc_db)
@@ -1149,6 +1373,75 @@ def cmd_selftest(args):
     check(workbuddywrite.plan_write(wb_home, fake(v2=True), None)["action"] == "up-to-date", "workbuddy：三次 up-to-date")
     check(read_workbuddy(wb_home) == [], "workbuddy：uuid5 导入不回流（防 A→workbuddy→A 成环）")
 
+    # minimax 写入器（沙箱回路：create → 追加 → 幂等 → 防回流 → 前缀/项目回填）
+    from agentsync import minimaxwrite
+    from agentsync.readers import read_minimax
+
+    mmw_home = os.path.join(box, "mmw-home")
+    mmw_db = os.path.join(mmw_home, "v2", "sqlite", "runtime-state.sqlite")
+    os.makedirs(os.path.dirname(mmw_db), exist_ok=True)
+    con = sqlite3.connect(mmw_db)
+    con.executescript(
+        "CREATE TABLE local_runtime_sessions (session_id TEXT PRIMARY KEY, record_json TEXT NOT NULL,"
+        " updated_at_ms INTEGER NOT NULL, columnar_version INTEGER NOT NULL, agent_name TEXT,"
+        " runtime TEXT, session_type TEXT, status TEXT, archived INTEGER NOT NULL, visibility TEXT NOT NULL,"
+        " session_kind TEXT NOT NULL, purpose TEXT, purpose_kind TEXT NOT NULL, origin_cron_id TEXT,"
+        " parent_session_id TEXT, workspace_dir TEXT, project_workspace_dir TEXT,"
+        " is_default_workspace INTEGER NOT NULL, title TEXT, created_at_ms INTEGER, error_message TEXT,"
+        " error_code TEXT, extra_data_json TEXT NOT NULL, project_id INTEGER, history_relative_dir TEXT);"
+        "CREATE TABLE local_runtime_message_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,"
+        " msg_id TEXT NOT NULL, role TEXT, turn_id TEXT, created_at_ms INTEGER NOT NULL, data_json TEXT NOT NULL);"
+        "CREATE TABLE local_runtime_projects (project_id INTEGER PRIMARY KEY AUTOINCREMENT, project_kind TEXT,"
+        " workspace_dir TEXT, pinned INTEGER, hidden INTEGER, order_index INTEGER, recent_at_ms INTEGER,"
+        " latest_activity_at_ms INTEGER, session_count INTEGER, extra_data_json TEXT,"
+        " created_at_ms INTEGER, updated_at_ms INTEGER);"
+        "CREATE TABLE local_runtime_turn_ingress (turn_id TEXT PRIMARY KEY, session_id TEXT, source TEXT,"
+        " client_request_id TEXT, claim_id TEXT, claim_source TEXT, queue_item_ids_json TEXT, input_json TEXT,"
+        " status TEXT, accepted_at_ms INTEGER, accepted_sequence INTEGER, completed_at_ms INTEGER,"
+        " queue_acknowledged_at_ms INTEGER, input_digest TEXT, input_metadata_json TEXT);"
+        "CREATE TABLE local_runtime_turn_ingress_sequences (sequence INTEGER PRIMARY KEY, turn_id TEXT);"
+        "CREATE TABLE local_runtime_query_view_states (session_id TEXT, query_key TEXT, current_turn_id TEXT,"
+        " force_expanded INTEGER, processing_started_at_ms INTEGER, processing_finished_at_ms INTEGER,"
+        " updated_at_ms INTEGER, PRIMARY KEY (session_id, query_key));"
+        "CREATE TABLE local_runtime_session_agent_state (session_id TEXT PRIMARY KEY, turn_id TEXT,"
+        " turn_sequence INTEGER, runtime_seq INTEGER, event_id TEXT, terminal_outcome TEXT,"
+        " updated_at_ms INTEGER);"
+        "CREATE VIRTUAL TABLE local_runtime_sessions_fts USING fts5(session_id UNINDEXED, session_id_terms,"
+        " agent_name_terms, title_terms, workspace_dir_terms, purpose_terms, status_terms, session_type_terms);"
+        "CREATE TRIGGER trg_mm_test AFTER INSERT ON local_runtime_sessions BEGIN "
+        "INSERT INTO local_runtime_projects (project_kind, workspace_dir, created_at_ms, updated_at_ms) "
+        "SELECT 'workspace', NEW.project_workspace_dir, NEW.created_at_ms, NEW.created_at_ms "
+        "WHERE NEW.project_workspace_dir IS NOT NULL AND NOT EXISTS "
+        "(SELECT 1 FROM local_runtime_projects WHERE workspace_dir = NEW.project_workspace_dir); END;"
+    )
+    con.commit()
+    con.close()
+    m1 = minimaxwrite.plan_write(mmw_home, fake(), None)
+    check(m1["action"] == "create", "minimax：计划 create")
+    minimaxwrite.apply_write(m1)
+    backm = read_minimax(mmw_home, include_imports=True)
+    check(len(backm) == 1 and backm[0].title.startswith("[codex]") and backm[0].turns[0].prompt == "第一问：你好",
+          "minimax：读回（标题 [source] 前缀 + 首问）")
+    m2 = minimaxwrite.plan_write(mmw_home, fake(v2=True), None)
+    check(m2["action"] == "append", "minimax：新轮计划 append")
+    minimaxwrite.apply_write(m2)
+    backm2 = read_minimax(mmw_home, include_imports=True)
+    check(len(backm2[0].turns) == 2 and any(
+        "工具调用" in (b.get("text") or "") or "工具结果" in (b.get("text") or "")
+        for s2 in backm2[0].turns[1].steps for b in s2.content),
+        "minimax：追加后含工具调用（文本摘要形态，原生工具形状待实机核验）")
+    check(minimaxwrite.plan_write(mmw_home, fake(v2=True), None)["action"] == "up-to-date", "minimax：三次 up-to-date")
+    check(read_minimax(mmw_home) == [], "minimax：uuid5 导入不回流（防 A→minimax→A 成环）")
+    con = sqlite3.connect(mmw_db)
+    projn = con.execute("SELECT COUNT(*) FROM local_runtime_projects WHERE workspace_dir=?",
+                        (fake().cwd,)).fetchone()[0]
+    pid = con.execute("SELECT project_id FROM local_runtime_sessions WHERE session_id=?",
+                      (minimaxwrite.local_id(fake()),)).fetchone()
+    ftsn = con.execute("SELECT COUNT(*) FROM local_runtime_sessions_fts").fetchone()[0]
+    con.close()
+    check(projn == 1 and pid and pid[0] is not None, "minimax：项目行触发器 + project_id 回填")
+    check(ftsn >= 1, "minimax：FTS 行已补（搜索数据源）")
+
     # ── 9. webui（只读 dashboard）───────────────────────────────────────
     print("\n== 9. webui 只读服务 ==")
     import threading
@@ -1194,6 +1487,17 @@ def cmd_selftest(args):
         st, ov = get("/api/overview")
         names = {s["name"] for s in ov.get("sources", [])}
         check(st == 200 and names == set(webui.SOURCES), "overview 七源卡齐全")
+        # 源卡图标：14 家全有 + 白名单外的路径拒绝
+        for _ic in ("zcode.png", "hermes.svg", "minimax.png", "gemini.svg", "pi.svg"):
+            with opener.open(httpd.url + "/icons/" + _ic) as r:
+                check(r.status == 200 and r.headers.get("Content-Type", "").startswith("image/"),
+                      "icons/" + _ic + " 可取（官方图标静态端点）")
+        try:
+            opener.open(httpd.url + "/icons/..%5Cdb.sqlite")
+            code_ic = 200
+        except urllib.error.HTTPError as e:
+            code_ic = e.code
+        check(code_ic == 404, "icons/ 白名单拒绝路径穿越")
         st, metas = get("/api/sessions?source=dsh")
         check(st == 200 and any(m["id"].startswith("import-") for m in metas), "sessions 读到沙箱导入会话")
         # titles.json 显示层叠加：人工标题覆盖到 webui（同步侧不受影响）
@@ -1300,6 +1604,28 @@ def cmd_selftest(args):
         check(not plan_bad.get("ok"), "restore：只读目标拒绝")
         rows_none = backup_mod.do_backup(["claude"], fake_p, ids={"no-such-id"})
         check(rows_none[0]["count"] == 0, "backup ids=：点名未命中快照 0 条")
+
+        # 9.3b2 原始库快照往返：假 trae 树（globalStorage vscdb + ModularData 加密库）
+        trae_gs = os.path.join(box, "trae-home", "User", "globalStorage")
+        os.makedirs(trae_gs, exist_ok=True)
+        open(os.path.join(trae_gs, "state.vscdb"), "wb").write(b"fake-vscdb")
+        trae_dbdir = os.path.join(box, "trae-home", "ModularData", "ai-agent")
+        os.makedirs(trae_dbdir, exist_ok=True)
+        open(os.path.join(trae_dbdir, "database.db"), "wb").write(b"\xf6}h_4Z-encrypted-payload")
+        open(os.path.join(trae_dbdir, "database.db-wal"), "wb").write(b"7\x7f\x06\x82-wal")
+        fake_tr = paths.StorePaths(trae_global_db=_P(os.path.join(trae_gs, "state.vscdb")))
+        rraw = backup_mod.do_raw_backup(["trae"], fake_tr)
+        check(len(rraw) == 1 and rraw[0]["raw"] and rraw[0]["count"] == 2, "raw backup：加密库 2 文件整份快照")
+        snaps_tr = backup_mod.list_snapshots("trae")
+        check(len(snaps_tr) == 1 and snaps_tr[0]["raw"] and snaps_tr[0]["count"] == 2,
+              "raw backup --list：清单带 raw 标记")
+        open(os.path.join(trae_dbdir, "database.db"), "wb").write(b"corrupted-live-db")
+        plan_tr = backup_mod.plan_restore("trae", snaps_tr[0]["ts"], fake_tr)
+        check(plan_tr.get("ok") and plan_tr.get("raw") and plan_tr.get("count") == 2, "raw restore 计划：原位 2 文件")
+        res_tr = backup_mod.do_restore("trae", snaps_tr[0]["ts"], fake_tr)
+        check(res_tr.get("ok") and res_tr.get("restored") == 2
+              and open(os.path.join(trae_dbdir, "database.db"), "rb").read() == b"\xf6}h_4Z-encrypted-payload",
+              "raw restore：原位拷回内容保真")
 
         # 9.3c prune --hard 端到端：点名删除沙箱导入 → sessions API 立即反映（原 9.3 延续）
         # 整源导出：口径=原生（排除导入副本/子代理/归档）；md 合并单文件、jsonl 一行一会话
@@ -1426,6 +1752,10 @@ def main():
         ("to-hermes", cmd_to_hermes, "覆盖 hermes state.db 路径"),
         ("to-opencode", cmd_to_opencode, "覆盖 opencode opencode.db 路径"),
         ("to-workbuddy", cmd_to_workbuddy, "覆盖 workbuddy home 目录"),
+        ("to-minimax", cmd_to_minimax, "覆盖 minimax home 目录"),
+        ("to-pi", cmd_to_pi, "覆盖 pi home 目录"),
+        ("to-gemini", cmd_to_gemini, "覆盖 gemini home 目录"),
+        ("to-cline", cmd_to_cline, "覆盖 cline 扩展存储目录"),
     ):
         s = sub.add_parser(sink, help=f"导入到 {sink[3:]}（可续聊）")
         s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode[,dsh]；交互缺省时弹菜单")
@@ -1449,7 +1779,7 @@ def main():
     s.set_defaults(fn=cmd_pull)
 
     s = sub.add_parser("push", help="规范库 C → 目标 agent（幂等断点续推，中途换 agent 可继续）")
-    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes", "opencode", "workbuddy"], help="推送目标")
+    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes", "opencode", "workbuddy", "minimax", "pi", "gemini", "cline"], help="推送目标")
     s.add_argument("--source", default="", help="来源区（确认1/2）：C 里哪些源推过去")
     s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（写 agent 存储，全量需确认）")
     s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
@@ -1678,7 +2008,7 @@ def cmd_attach_dsh(args):
 
 
 def _regtest_writers():
-    from agentsync import claudewrite, codexwrite, hermeswrite, opencodewrite, workbuddywrite
+    from agentsync import claudewrite, clinewrite, codexwrite, geminiwrite, hermeswrite, minimaxwrite, opencodewrite, piwrite, workbuddywrite
 
     return {
         "dsh": (lambda p: p.dsh_sessions, dshwrite),
@@ -1687,6 +2017,10 @@ def _regtest_writers():
         "hermes": (lambda p: p.hermes_db, hermeswrite),
         "opencode": (lambda p: p.opencode_db, opencodewrite),
         "workbuddy": (lambda p: p.workbuddy_home, workbuddywrite),
+        "minimax": (lambda p: p.minimax_home, minimaxwrite),
+        "pi": (lambda p: p.pi_home, piwrite),
+        "gemini": (lambda p: p.gemini_home, geminiwrite),
+        "cline": (lambda p: p.cline_home, clinewrite),
     }
 
 
@@ -1877,7 +2211,8 @@ def cmd_doctor(args):
     """一键体检+自修复（不动任何会话数据）：
     ① Python 版本 ② zstandard 缺失自动 pip 安装 ③ 沙箱 selftest
     ④ 存储探测（11 源，未安装=信息不算病） ⑤ 增量基准损坏自动备份重建
-    ⑥ dsh 导入校验（BAD 给修复命令，不代写） ⑦ skills 桥接 + 全局 shim 缺/坏自动补。
+    ⑥ dsh 导入校验（BAD 给修复命令，不代写） ⑦ skills 桥接 + 全局 shim 缺/坏自动补
+    ⑧ opencode 存量导入审计（清单反推法，自动补登记防跨家重复）。
     """
     import shutil
     import subprocess
@@ -1885,13 +2220,13 @@ def cmd_doctor(args):
     fixes: list[str] = []
     warns: list[str] = []
 
-    print("[1/7] Python 版本 ...")
+    print("[1/8] Python 版本 ...")
     if sys.version_info >= (3, 10):
         print(f"  ✔ {sys.version.split()[0]}")
     else:
         warns.append(f"Python {sys.version.split()[0]} < 3.10，请升级")
 
-    print("[2/7] zstandard 依赖 ...")
+    print("[2/8] zstandard 依赖 ...")
     try:
         import zstandard  # noqa: F401
         print("  ✔ 已安装")
@@ -1904,7 +2239,7 @@ def cmd_doctor(args):
         else:
             warns.append("zstandard 自动安装失败，请手动：pip install zstandard")
 
-    print("[3/7] 沙箱 selftest（不碰真实数据）...")
+    print("[3/8] 沙箱 selftest（不碰真实数据）...")
     r = subprocess.run([sys.executable, os.path.abspath(__file__), "selftest"],
                        capture_output=True, text=True)
     if r.returncode == 0 and "SELFTEST PASSED" in (r.stdout or ""):
@@ -1912,7 +2247,7 @@ def cmd_doctor(args):
     else:
         warns.append("selftest 未通过，输出尾部：" + " | ".join((r.stdout or "").strip().splitlines()[-3:]))
 
-    print("[4/7] 存储探测（11 源）...")
+    print("[4/8] 存储探测（11 源）...")
     p = paths.detect()
     fields = [("zcode", p.zcode_db), ("hermes", p.hermes_db), ("dsh", p.dsh_sessions),
               ("codex", p.codex_sessions), ("workbuddy", p.workbuddy_home),
@@ -1921,7 +2256,7 @@ def cmd_doctor(args):
     found = [n for n, v in fields if v]
     print(f"  探测到 {len(found)}/11：{' '.join(found) or '（无）'}（未装的只是不可读，不算病）")
 
-    print("[5/7] 增量基准健康（6 写目标）...")
+    print("[5/8] 增量基准健康（6 写目标）...")
     import time as _t
     ts = _t.strftime("%Y%m%d-%H%M%S")
     for tgt, (get_store, _w) in _regtest_writers().items():
@@ -1938,7 +2273,7 @@ def cmd_doctor(args):
             print(f"  [修复] {tgt} 基准文件损坏 → 已备份重建")
     print("  ✔ 其余目标基准正常或尚未建立")
 
-    print("[6/7] dsh 导入会话校验 ...")
+    print("[6/8] dsh 导入会话校验 ...")
     if p.dsh_sessions:
         r = subprocess.run([sys.executable, os.path.abspath(__file__), "verify"],
                            capture_output=True, text=True)
@@ -1950,7 +2285,7 @@ def cmd_doctor(args):
     else:
         print("  （未装 dsh，跳过）")
 
-    print("[7/7] skills 桥接 + 全局 shim ...")
+    print("[7/8] skills 桥接 + 全局 shim ...")
     skill_dir = os.path.dirname(os.path.abspath(__file__))
     home = os.path.expanduser("~")
     cands = [os.path.join(home, *pp) for pp in (
@@ -1998,6 +2333,63 @@ def cmd_doctor(args):
     if bin_dir not in os.environ.get("PATH", "").split(os.pathsep):
         warns.append(f"{bin_dir} 不在当前 PATH（新终端可能才生效；仍缺则手动加入）")
 
+    # ⑧ opencode 存量导入审计（防环清单反推法）：旁路清单上线前的老写入无标记，
+    # 会被当原生外流造成跨家重复（2026-09-03 实例：zcode→opencode→dsh 双胞胎）。
+    # 反推法：用写入器确定性 uuid5 对全源会话重铸 id，命中即老导入 → 自动补登记。
+    print("[8/8] opencode 存量导入审计（清单反推）...")
+    p_det = paths.detect()
+    if p_det.opencode_db:
+        import sqlite3 as _sq
+        import uuid as _uu
+        from agentsync.opencodewrite import _NS as _OC_NS
+
+        _db = str(p_det.opencode_db)
+        _con = _sq.connect(f"file:{_db.replace(chr(92), '/')}?mode=ro", uri=True)
+        _rows = dict(_con.execute("SELECT id, title FROM session").fetchall())
+        _con.close()
+        _marked = readers._oc_import_ids(_db)
+        _suspects = {}
+        for _sid, _title in _rows.items():
+            _h = _sid[4:] if _sid.startswith("ses_") else ""
+            if _sid in _marked or len(_h) != 32:
+                continue
+            try:
+                if _uu.UUID(_h).version != 5:
+                    continue
+            except ValueError:
+                continue
+            _suspects[_sid] = _title
+        if not _suspects:
+            print("  无未标记的 uuid5 会话（清单覆盖完好）")
+        else:
+            _pairs = []
+            _loaded = readers.load_sources(
+                [s for s in ALL_SOURCES if s not in ("opencode", "dsh", "cursor", "trae")], p_det)
+            for _src, _ss in _loaded.items():
+                _pairs += [(_src, s.source_id) for s in _ss]
+            _hit = set()
+            for _src, _orig in _pairs:
+                _hid = "ses_" + _uu.uuid5(_OC_NS, f"{_src}:{_orig}").hex
+                if _hid in _suspects:
+                    _hit.add(_hid)
+            if _hit:
+                import shutil as _sh
+                _mf = os.path.join(os.path.dirname(_db), ".agentsync-imports.json")
+                if os.path.exists(_mf):
+                    _sh.copy2(_mf, _mf + ".bak-" + time.strftime("%Y%m%d-%H%M%S"))
+                json.dump({"ids": sorted(_marked | _hit)}, open(_mf, "w", encoding="utf-8"),
+                          ensure_ascii=False, indent=1)
+                fixes.append(f"opencode 清单补登记 {len(_hit)} 条老写入（防跨家重复外流）")
+                print(f"  [修复] 补登记 {len(_hit)} 条：" + "、".join(
+                    f"「{(_rows.get(h) or '')[:18]}」" for h in sorted(_hit)))
+                _left = len(_suspects) - len(_hit)
+                if _left:
+                    print(f"  其余 {_left} 条 uuid5 未命中反推 → 桌面原生，保留不动")
+            else:
+                print(f"  {_suspects and len(_suspects)} 条 uuid5 未命中反推 → 桌面原生，保留不动")
+    else:
+        print("  （未装 opencode，跳过）")
+
     print(f"\n== 体检完成：修复 {len(fixes)} 项 · 警告 {len(warns)} 项 ==")
     for f in fixes:
         print(f"  [fixed] {f}")
@@ -2038,14 +2430,22 @@ def cmd_backup(args):
         rows = backup_mod.list_snapshots(None if args.source in ("", "all") else args.source)
         for r in rows:
             days = r.get("days")
-            print(f"  [{r['source']:9}] {r['ts']}  {r['count']:3} 条  {r['size_kb']:9.1f} KB  "
-                  f"{'原生+导入' if r.get('with_imports') else '原生'}  "
-                  f"范围={'全部' if days in (None, 'all') else f'{days}天'}")
+            kind = "📦 原始库" if r.get("raw") else ("原生+导入" if r.get("with_imports") else "原生")
+            unit = "文件" if r.get("raw") else "条"
+            print(f"  [{r['source']:9}] {r['ts']}  {r['count']:3} {unit}  {r['size_kb']:9.1f} KB  {kind}  "
+                  + ("" if r.get("raw") else f"范围={'全部' if days in (None, 'all') else f'{days}天'}"))
             print(f"              {r['dir']}")
         if not rows:
             print("（暂无快照）")
         return
     which = _parse_sources(args.source or "all", ALL_SOURCES)
+    raw_which = [s for s in which if s in backup_mod.RAW_SOURCES]
+    which = [s for s in which if s not in backup_mod.RAW_SOURCES]
+    if raw_which:
+        print("以下源读取被加密阻断（如 trae CN），走原始库整份快照（不解密不解析）：")
+        for r in backup_mod.do_raw_backup(raw_which, p):
+            note = "" if r["count"] else "（未找到库文件，应用是否安装？）"
+            print(f"  [{r['source']:9}] 快照 {r['ts']}：{r['count']} 个库文件，{r['size_kb']} KB → {r['dir']} {note}")
     days = _backup_scope_days(args.scope)
     ids = None
     if args.session:
@@ -2073,6 +2473,15 @@ def cmd_restore(args):
     plan = backup_mod.plan_restore(args.source, args.ts, p, target=args.target, limit=8)
     if not plan.get("ok"):
         sys.exit(plan["error"])
+    if plan.get("raw"):
+        print(f"快照 {args.source}@{args.ts} → 原始库原位写回：共 {plan['count']} 个库文件")
+        print(f"  {plan.get('note', '')}")
+        if not args.apply:
+            print("\nDRY-RUN：加 --apply 落盘（覆盖现库文件；目标应用需先完全退出）")
+            return
+        r = backup_mod.do_restore(args.source, args.ts, p)
+        print(f"\n还原完成：原位写回 {r['restored']} 个库文件")
+        return
     print(f"快照 {args.source}@{args.ts} → 目标 {plan['target']}：共 {plan['count']} 条")
     for s in plan["sessions"]:
         print(f"  {s['id']}  「{(s['title'] or '')[:40]}」")
