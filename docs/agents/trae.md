@@ -1,29 +1,52 @@
-# Trae 会话结构详解（布局对齐 Cursor，待实机核验）
+# Trae 会话结构详解（CN 版实机核验：正文库自加密，读取被阻断）
 
-核实基线：本机 **Trae CN 残留**实测（`%APPDATA%\Trae CN\`，2026-09-02——已卸载，
-chat index 空、无 cursorDiskKV 表、仅输入历史面包屑）；读取器
-`agentsync.readers.read_trae`（只读源；第十一家，**未在本机验证过真实正文**）。
+核实基线：本机 **Trae CN 重装后实测**（`%APPDATA%\Trae CN\`，2026-09-03，真实
+工作区对话一条）；读取器 `agentsync.readers.read_trae`（只读源；第十一家，
+当前对本机返回 0 会话——原因见下，不是 bug）。
 
-## 1. 已实测的事实（残留）
+## 1. 实测存储布局（重装后有真实对话）
 
 ```
-%APPDATA%\Trae CN\                    ← 国内版目录名带 " CN" 后缀（探测认 Trae / Trae CN 两种）
-├── User\globalStorage\state.vscdb    ← ItemTable 93 键；chat.ChatSessionStore.index = {"version":…,"entries":{}}（空）
-├── User\workspaceStorage\<hash>\     ← chat index 同样 entries 空
-~/.trae-cn\                           ← 空壳
-%LOCALAPPDATA%\Programs\Trae CN\      ← 程序本体
+%APPDATA%\Trae CN\
+├── ModularData\ai-agent\
+│     database.db (+ -wal/-shm)     ← ★ 会话正典：整库自加密（6.7MB 全密文，
+│                                     无 "SQLite format 3" 头 → 非标准 SQLCipher，
+│                                     WAL 帧亦密文；你好/会话 id 均搜不到明文）
+│     snapshot\<sessionId>\v2\.git\  = Agent 文件快照（checkpoint，非聊天）
+│     sandbox / hooks_env / …        = 执行环境
+├── User\globalStorage\state.vscdb   ← ItemTable：draft:session:<id>:code（输入草稿）、
+│                                     ai-chat-v2.lastActiveSessionId、agent 配置
+├── User\workspaceStorage\<hash>\    ← workspace.json（folder URI）+ ItemTable：
+│       memento/icube-ai-agent-storage（会话清单）、icube-ai-agent-storage-input-history
+│       （输入历史，明文可见「你好」）、ai-chat.chatQueryCompletion.v2.<id>
+└── logs\<ts>\window1\renderer.log   ← 请求载荷 + 流式元数据（sessionId/turnId/
+                                       messageId/模型配置），但**回复正文不落日志**
 ```
 
-结论：卸载清空了会话数据，**真实正文格式无法从残留反推**。
+## 2. 关键结论
 
-## 2. 读取策略（read_trae，v1 探针）
+- **「布局对齐 Cursor（cursorDiskKV）」是空壳年代的误判**：重装后的 CN 版
+  globalStorage state.vscdb 连 cursorDiskKV 表都没有，只有 ItemTable
+- 会话正典 = `ModularData/ai-agent/database.db`，自定义加密（疑似应用层密钥，
+  头部 16 字节非 SQLite 魔数，排除标准 SQLCipher），**离线读取被加密阻断**
+- 明文可见的只有元数据面包屑：输入历史、会话 id、agent 映射、草稿——够定位
+  「有这条会话」，不够还原正文
+- 会话 id 形如 24 位 hex（`6a99199b3b9da18a60ac68ce`），消息 id 同族 +1 递增
 
-- 复用 Cursor 的 cursorDiskKV 引擎（Trae 是 VS Code 系 fork，合理兜底）；
-  表不存在时静默返回空——本机残留即此形态（0 会话，卡片显示真实状态）
-- 重装 Trae 后需实机核验：真实 chat 存储是 cursorDiskKV 同形状还是
-  `chat.ChatSessionStore.index` + icube 自有键（`icubeAiChat/…`），对照本篇更新
-- 目录绑定（webui ⚙）规则已备：粘 `%APPDATA%\Trae CN` 或直接 state.vscdb 均可
+## 3. 读取策略（read_trae，现状）
 
-## 3. 边界
+- cursorDiskKV 引擎保留（对旧版/国际版布局仍可能有效），当前 CN 版表不存在
+  → 静默 0 会话，卡片显示 0 是真实状态
+- 探测/绑定不变：`%APPDATA%\Trae CN`（认 Trae / Trae CN 两种目录名）
+- 卡片显示 **🔒 加密阻断**（读/写 tag 均不提供）；「备份」tag 是唯一可用动作 =
+  **原始库整份快照**（`sync.py backup --source trae` 或 webui 同名弹窗）：加密库
+  database.db+wal/shm 不解密直接拷进 `~/.session-sync/backups/trae/<ts>/raw/`，
+  还原=原位覆盖写回（需 Trae 完全退出）。日后解密攻破，快照即可回补读取
 
-- 本机 0 会话不是 bug——残留就这么多；有数据后以实测为准修订本文档
+## 4. 边界与后续路径
+
+- 解除阻断需逆向加密（Electron 主进程/随包 native 服务里的密钥派生），成本高，
+  优先级由需求定
+- 备选：国际版 Trae（不带 CN 后缀）存储是否加密未测；Trae UI 若有导出功能，
+  导出件可走归档通道
+- snapshot 的 git 快照只含工作区文件状态，不含对话

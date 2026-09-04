@@ -1,7 +1,7 @@
 # AGENTS.md — 跨 Agent 会话同步（给 AI agent 的操作手册）
 
-本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae** 十一家 AI agent
-的会话记录归一到 **dsh** 继续对话，并可导出 Markdown 归档。
+本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae / minimax(MiniMax Code) / pi(Pi Agent) / gemini(Gemini CLI) / cline(Cline)** 十五家 AI agent
+的会话记录归一到 **dsh** 继续对话，并可导出 Markdown 归档（另有 **4 张占位卡**：mimo(MiMo-Code)/kimi(Kimi Code)/grok(Grok Build=~/.grok/sessions JSONL 三层)/copilot(GitHub Copilot=VS Code chatSessions)——均源码核验，路径探测与手动绑定已留，待实装接 reader）。
 **zcode 只出不进**（仅读取源；写入方向已移除——双端同对话易混乱，实测亦有兼容问题）。
 你（AI agent）读完本文件即可安全操作，不需要其它上下文。
 
@@ -47,8 +47,8 @@ python sync.py attach-dsh --apply                                           # �
 | 只读可视化 dashboard（给人看） | `python sync.py web`（浏览器自动开 127.0.0.1:8321，`--port` 可改；三视图：总览 9 泳道时间轴/会话列表筛选/轮次时间条下钻；行级/详情可导出——`⬇ md`（人读 Markdown）与 `⬇ ir`（C 库同构 IR JSON，拷进 ~/.session-sync 即可 push 回写）；📥=agentsync 导入（列表/详情标题黄）、🤖=子代理、🗑=回收站徽章；源卡 stat 统一「导入 X + 原生 Y」；源卡标签可点——`可导出` 弹窗勾选会话整源下载（md/jsonl，原生口径），`可写入` 弹「让 agent 代跑」提示词可复制，`⚙`/「未找到·点击绑定」弹目录绑定（粘绝对路径，后端校验结构，存 ~/.session-sync/paths.json 优先于自动探测，空=解绑）；POST 仅此一个例外端点、其余 405、仅绑 127.0.0.1、实时读源无缓存。用户想看会话全景/排查时间分布时起给他；agent 自己分析数据不需要它。install 脚本装过后任意目录可直接 `session-sync web`，快捷 `ass web`） |
 | 把某条会话带进 zcode 续聊（zcode 不可写库） | `python sync.py archive --source dsh --session <id子串> --apply` 导出单会话 Markdown → 用户贴进 zcode 新会话（上下文靠文档传递；项目级用 `local/zcode-交接摘要.md` 模式） |
 | 导入到 dsh（计划→落盘） | `python sync.py to-dsh --source all --scope inc` 然后 `--apply --budget 550000`（终端跑自动弹两道确认；非交互必须显式两参，缺参拒绝） |
-| 反向写入 codex / claude code / hermes / opencode / workbuddy | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy}write.py；zcode 不可写）。**六目标已实测全通**（每家的可见性坑都已固化修复：codex 需登记 state_N.sqlite threads 索引、hermes 需计数列、opencode 需 path 列+对齐默认项目上下文） |
-| 规范库（A→C→B 架构） | `python sync.py pull --source all --scope inc`（各源→~/.session-sync，只读源安全免退出）→ `python sync.py push --target dsh\|codex\|claude\|hermes --source all --scope inc --apply`（C→目标，幂等断点续推，中途换 agent 重跑即续；与直通 to-X 共享幂等 id，混用不重复） |
+| 反向写入 codex / claude code / hermes / opencode / workbuddy / minimax / pi / gemini / cline | `python sync.py to-codex\|to-claude\|to-hermes\|to-opencode\|to-workbuddy\|to-minimax\|to-pi\|to-gemini\|to-cline --source all --scope inc --apply`（同款两道确认+历史拦截；非 dsh 目标 all 含 dsh 源；写入器在 agentsync/{codex,claude,hermes,opencode,workbuddy,minimax,pi,gemini,cline}write.py；zcode 不可写；**minimax 写入须先完全退出 MiniMax Code**）。**十目标已实测全通**（每家的可见性坑都已固化修复：codex 需登记 state_N.sqlite threads 索引、hermes 需计数列、opencode 需 path 列+对齐默认项目上下文、minimax 靠 columnar_version=3 触发器自动建项目行+手动回填 project_id+补 FTS 行、pi/gemini/cline 均为明文 JSONL/JSON 追加式） |
+| 规范库（A→C→B 架构） | `python sync.py pull --source all --scope inc`（各源→~/.session-sync，只读源安全免退出）→ `python sync.py push --target dsh\|codex\|claude\|hermes\|opencode\|workbuddy\|minimax\|pi\|gemini\|cline --source all --scope inc --apply`（C→目标，幂等断点续推，中途换 agent 重跑即续；与直通 to-X 共享幂等 id，混用不重复） |
 | 挂工作区分组 + 标题预投影 | **退出 dsh 后** `python sync.py attach-dsh --apply`（改 workspace.json + 回填 projcache title 行，均先备份） |
 | 批量改标题 | 编辑 `titles.json`（{源ID: 新标题}）→ `python sync.py to-dsh --source all --scope all --apply --force --confirm-history --titles titles.json --budget 550000` → 重启 dsh |
 | 只同步某个会话 | 加 `--session <源ID子串>`（如 `--session sess_07c4`） |
@@ -59,8 +59,8 @@ python sync.py attach-dsh --apply                                           # �
 | 清理孤儿/测试会话 | **退出 dsh 后** `python sync.py prune --apply`（dry-run 先看；孤儿=源已删的导入，junk=纯打招呼/冒烟；移入 `~/.trash-dsh` 可恢复，manifest.jsonl 有明细） |
 | 校验已导入的 dsh 会话 | `python sync.py verify` |
 | 一键收尾（不想逐条跑） | 退出 dsh 后 `python sync-finish.py`（先弹两道确认→prune+导入+挂载+校验；`--sources zcode --scope 7d` 参数即确认）；`--check` 只读预览 |
-| 一键体检+自修复 | `python sync.py doctor`：zstandard 缺失自动装 → selftest → 存储探测 → 增量基准损坏备份重建 → dsh 导入校验（BAD 给修复命令不代写）→ skills 桥接/全局 shim 缺坏自动补。全程不动会话数据，有警告退出码 1 |
-| 会话备份/还原 | `python sync.py backup [--source all] [--scope 7d\|30d\|all] [--with-imports] [--session 子串] [--list] [--source X --ts Y --delete]`：按口径（默认原生）与日期/点名快照会话 IR 到 C 库 `backups/<源>/<时间戳>/`，不碰源数据、不推进增量水位；`restore --source <源> --ts <戳> [--target] [--apply]` 幂等写回（默认目标=源本身，只读源须 `--target`）。webui：各源卡片「备份」tag（口径/日期 chips+会话勾选+快照行选目标还原）；**C 库卡片「备份」tag=全源快照总览**（源徽章+磁盘路径+还原+删除） |
+| 一键体检+自修复 | `python sync.py doctor`：zstandard 缺失自动装 → selftest → 存储探测 → 增量基准损坏备份重建 → dsh 导入校验（BAD 给修复命令不代写）→ skills 桥接/全局 shim 缺坏自动补 → **opencode 存量导入审计**（清单反推法：旁路清单上线前的老写入自动补登记，防跨家重复外流）。全程不动会话数据，有警告退出码 1 |
+| 会话备份/还原 | `python sync.py backup [--source all] [--scope 7d\|30d\|all] [--with-imports] [--session 子串] [--list] [--source X --ts Y --delete]`：按口径（默认原生）与日期/点名快照会话 IR 到 C 库 `backups/<源>/<时间戳>/`，不碰源数据、不推进增量水位；`restore --source <源> --ts <戳> [--target] [--apply]` 幂等写回（默认目标=源本身，只读源须 `--target`）。**读取被阻断的源（trae）自动转原始库整份快照**：加密库文件（database.db+wal/shm）不解密直接拷进 C 库，还原=原位覆盖写回。webui：各源卡片「备份」tag（口径/日期 chips+会话勾选+快照行选目标还原；阻断源弹原始库快照模式，卡片带 🔒 加密阻断 tag）；**C 库卡片「备份」tag=全源快照总览**（源徽章+磁盘路径+还原+删除，📦 行=原始库快照） |
 | 矩阵回归（真库读写闭环） | `python sync.py regtest`（dry-run 看计划）→ **退出全部目标应用**后 `python sync.py regtest --apply`。每格自动选该源「最新且已稳定」会话当探针（10 分钟内仍在更新的跳过），五步验证：缺基准先预置到探针时刻-1ms → 审计探针在增量候选 → 走 to-X 同一代码路径精准写 1 条 → 复跑验幂等 → 含导入口径读回；自家→自家格验证防回环拦截。`--sources`/`--targets` 缩圈；跑完 `web` 核对各目标「导入 N」 |
 | dsh 原生后端强校验 | `tools\verify-dsh-backend.cmd`（Node 22） |
 
@@ -113,13 +113,21 @@ dsh 默认排除 `import-*` 会话（副本在 dsh，正主在原生源，当源
 | `docs/agents/qoder.md` | Qoder 深度规格：任务索引 vscdb + conversation-history 两跳、文件名截 8 位（读取源） |
 | `docs/agents/openclaw.md` | OpenClaw 深度规格：reset 快照孤儿读取、toolResult 行配对、新旧双版本兼容（读取源） |
 | `docs/agents/cursor.md` | Cursor 深度规格：globalStorage cursorDiskKV（composer+bubble 键前缀关联）、@路径标题剥离（读取源） |
-| `docs/agents/trae.md` | Trae 深度规格：布局对齐 Cursor、本机 Trae CN 残留空壳、待实机核验（读取源） |
+| `docs/agents/trae.md` | Trae 深度规格：CN 版实机核验——正文库 ModularData/ai-agent/database.db 自加密读取阻断、无 cursorDiskKV（读取源，当前 0 会话为真实状态） |
+| `docs/agents/minimax.md` | MiniMax Code 深度规格：v2 runtime-state.sqlite 注册表+消息行、引导壳无消息自然滤除、写入配方（读写源；占位说明在册尾） |
+| `docs/agents/pi.md` | Pi Agent 深度规格：~/.pi/agent/sessions 事件流 JSONL、thinking/toolCall/toolResult 映射、写入配方（读写源；minimax 的 pi-agent 运行时同源） |
+| `docs/agents/gemini.md` | Gemini CLI 深度规格：tmp/*/chats 的 $set 快照+裸消息行、流式碎片坑、写入配方（读写源） |
+| `docs/agents/grok.md` | Grok Build 深度规格（占位）：~/.grok/sessions 三层 JSONL、uuidv7、foreign-sessions 竞品模块；已装未认证 |
+| `docs/agents/mimo.md` | MiMo-Code 深度规格（占位）：mimocode.db、schema 同构 opencode 的列差异、uuidv5 误杀风险提示 |
+| `docs/agents/kimi.md` | Kimi Code 深度规格（占位）：~/.kimi-code、自研 minidb、migration-legacy 揭示的旧格式 |
+| `docs/agents/copilot.md` | GitHub Copilot 深度规格（占位）：VS Code chatSessions 布局、探测边界与 Cline 的区分 |
+| `docs/agents/cline.md` | Cline 深度规格：扩展 globalStorage tasks/<ts>/ 的 ui_messages 事件流、api 历史反解 cwd、三件 JSON 写入配方+旁路清单（读写源） |
 | `docs/agents/zcode.md` | zcode 深度规格：三表结构、message/part 模板、project_id（读取源；写入器已弃用存档） |
 | `docs/agents/hermes.md` | hermes 深度规格：state.db 两表、三种 role 形态、已知边界 |
 | `docs/agents/codex.md` | codex 深度规格：rollout JSONL、response_item 映射、subagent 过滤 |
 | `docs/agents/workbuddy.md` | WorkBuddy 深度规格：db+JSONL 双层、读取规则（已实现）、写入配方（未实现） |
 | `examples/` | 示例：真实命令输出转录 + 两条完整转换实例（源→dsh 事件日志 / 源→zcode 数据行） |
-| `agentsync/` | Python 源码（readers 十一家读取 / dshwrite 写入+挂载 / confirm 人工确认 / syncstate 增量基准 / model IR / archive / validate / store C 库 / webui 只读 dashboard；zcodewrite 已废弃保留） |
+| `agentsync/` | Python 源码（readers 十二家读取 + mimo/kimi 占位 / dshwrite 写入+挂载 / confirm 人工确认 / syncstate 增量基准 / model IR / archive / validate / store C 库 / webui 只读 dashboard；zcodewrite 已废弃保留） |
 | `tools/` | Node 22 的 dsh 原生后端校验脚本 |
 | `reference/` | 参考仓库（dsh-chat-import 等；agentctxsync 在 `本地克隆的 agentctxsync 仓库`） |
 | `archive/` | Markdown 归档输出目录 |

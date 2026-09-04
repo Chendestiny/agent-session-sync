@@ -1,4 +1,13 @@
-# 踩坑总录（都已修进代码）
+# 踩坑总录
+
+## opencode：旁路清单上线前的老写入无标记 → 跨家重复外流（2026-09-03 实例）
+
+- 现象：dsh 出现 `[zcode] SonarQube` 与 `[opencode] SonarQube` 双胞胎——旧版 opencodewrite
+  写入的会话（无 .agentsync-imports.json 登记）被读取器当原生，同步 opencode→dsh 时外流
+- 修复：**反推法补登记**——用写入器确定性 uuid5（NS+`{source}:{source_id}`）对全源会话
+  重铸 id，命中库内未标记 uuid5 即老写入 → 补进清单；未命中的 uuid5 是桌面版原生（保留）
+- 已固化：doctor 第 8 步自动审计+修复；桌面原生（uuid5 形状）与老写入（uuid5 且反推命中）
+  的判别只能靠反推，不能靠形状（都已修进代码）
 
 按家分组。每条含：坑 → 现象 → 修复。新坑照此格式追加，README 不再维护此表。
 

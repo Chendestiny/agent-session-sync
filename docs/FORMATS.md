@@ -10,7 +10,19 @@
 | [agents/openclaw.md](agents/openclaw.md) | openclaw | sessions JSONL + reset 孤儿快照（读取源；toolResult 独立行配对） |
 | [agents/hermes.md](agents/hermes.md) | hermes | state.db 两表，OpenAI chat 风格，单库不分区 |
 | [agents/codex.md](agents/codex.md) | codex CLI | rollout JSONL（session_meta/response_item/turn_context） |
-| [agents/workbuddy.md](agents/workbuddy.md) | WorkBuddy | 元数据 db + projects/<slug>/JSONL 双层（reader 已实现；写入配方备而未用） |
+| [agents/workbuddy.md](agents/workbuddy.md) | WorkBuddy | 元数据 db + projects/<slug>/JSONL 双层（读写源） |
+| [agents/claude.md](agents/claude.md) | Claude Code | ~/.claude/projects/<cwd转义>/<id>.jsonl |
+| [agents/opencode.md](agents/opencode.md) | OpenCode | opencode.db 三表 + 事件溯源（uuid5 旁路清单防环） |
+| [agents/cursor.md](agents/cursor.md) | Cursor | globalStorage cursorDiskKV（composer+bubble 键前缀关联） |
+| [agents/trae.md](agents/trae.md) | Trae | CN 版正文库自加密读取阻断（仅原始库快照备份） |
+| [agents/minimax.md](agents/minimax.md) | MiniMax Code | v2 runtime-state.sqlite 注册表+消息行（读写源） |
+| [agents/pi.md](agents/pi.md) | Pi Agent | ~/.pi 事件流 JSONL（append-only 树，parentId 链；读写源） |
+| [agents/gemini.md](agents/gemini.md) | Gemini CLI | tmp/*/chats $set 快照+裸消息行（读写源；流式碎片坑） |
+| [agents/cline.md](agents/cline.md) | Cline | 扩展 globalStorage tasks 三件 JSON（读写源；旁路清单） |
+| [agents/grok.md](agents/grok.md) | Grok Build | 占位：sessions 三层 JSONL（仓库已核，待实装） |
+| [agents/mimo.md](agents/mimo.md) | MiMo-Code | 占位：mimocode.db 同构 opencode（待实装） |
+| [agents/kimi.md](agents/kimi.md) | Kimi Code | 占位：~/.kimi-code 自研 minidb（待实装） |
+| [agents/copilot.md](agents/copilot.md) | GitHub Copilot | 占位：VS Code chatSessions（待逆向） |
 
 本页保留跨家通用的内容：归一化 IR、ID 铸造、时间戳约定、预算裁剪。
 

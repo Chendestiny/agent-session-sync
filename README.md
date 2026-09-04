@@ -2,9 +2,9 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-十一家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae**（trae 布局对齐 cursor，待实机核验）。
+十五家会话互通：**codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline**（trae CN 版正文库自加密暂不可读；mimo/kimi 等占位卡待实装）。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：9 读 + 6 写，而非 9×7 条直连）。
+单向归一（A→C→B：15 读 + 10 写 + 4 占位，而非两两直连）。
 
 | A · 读取源（9 家） | C · 归一化 | B · 写入目标（6 家 + 归档） |
 |---|---|---|
@@ -72,7 +72,7 @@ python sync.py web
 
 | 视图 | 看什么 |
 |---|---|
-| 总览 | 9 家源健康灯/实时会话数 + C 库水位线 + 9 泳道会话时间轴（位置=创建时间，宽度=跨度） |
+| 总览 | 19 张源卡官方图标两行跑马灯（健康灯/实时会话数/🔒加密阻断标记）+ 源名检索框 + C 库水位线独行 + 会话时间轴盒内竖滚（整页零滚动条） |
 | 会话列表 | 按源/日期/关键词筛选，点行下钻 |
 | 会话详情 | 轮次时间条（时间戳是否压平一眼可见）+ 轮次与工具调用明细 |
 
@@ -130,7 +130,7 @@ python sync.py status                          # 各 agent 源概览
 python sync.py to-dsh                          # 交互：弹两道确认（来源区→数据量）后 dry-run
 python sync.py to-dsh   --source zcode --scope 7d          # 参数即确认：zcode + 最近 7 天
 python sync.py to-dsh   --source all --scope inc --apply   # ① 导入到 dsh（agent/脚本必给两参）
-python sync.py to-codex --source zcode --scope inc --apply  # 反向写入 codex（to-claude/to-hermes/to-opencode/to-workbuddy 同款）
+python sync.py to-codex --source zcode --scope inc --apply  # 反向写入 codex（to-claude/to-hermes/to-opencode/to-workbuddy/to-minimax 同款）
 python sync.py pull --source all --scope inc                # A→C：各源 → 规范库 ~/.session-sync（安全免退出）
 python sync.py push --target codex --apply --scope inc      # C→B：断点续推（中途换 agent 可继续）
 # ② 完全退出 dsh 后：挂工作区分组 + 回填侧栏标题缓存（新会话进分组且列表直接带标题）
@@ -182,6 +182,10 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 - ✅ 工作区分区编码：projectKey / project_id 规则与各家原生行为全量比对零偏差
 - ✅ 幂等与增量：重复导入自动去重；源会话增长后仅追加新轮次且 seq 连续
 - ✅ 48 格矩阵回归（2026-09-02 实测）：8 源 × 6 写目标真库闭环——42 格各精准写入 1 条（幂等复跑零写入、含导入口径读回轮数一致）+ 6 格自家→自家防回环拦截全部触发；`sync.py regtest` 一条命令可复跑
+- ✅ 15 家读取源全部真实数据验证（2026-09-03/04 新增 minimax/pi/gemini/cline 四家，含中转站流式碎片、append-only parentId 链等实测坑）
+- ✅ 10 家写入目标（新增 minimax/pi/gemini/cline）：minimax 经 UI 验收、pi/gemini/cline 真库落盘读回，三家为明文 JSONL/JSON 追加式配方
+- ✅ 防环三件套：uuid5 版本位判别（7 家）+ 旁路清单（opencode/cline，doctor 第 8 步反推法自动审计补登记）+ import-* 前缀（dsh）；导入会话一律带 [source] 标题前缀（有标题机制的 6 目标）
+- ✅ 备份/还原：会话 IR 快照 + 加密阻断源（trae）自动转原始库整份快照，还原=幂等写入可跨家
 - ✅ 超长会话三层预算裁剪保续聊；zcode 写入器已在 db 副本上完成 round-trip 回归
 ### ⚠️ 踩坑记录
 
@@ -205,7 +209,7 @@ titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-d
 📦 agentsync/
   paths.py              各家存储定位 + zcode project_id 规则
   model.py              归一化 IR + token 估算 + 三层预算裁剪
-  readers.py            十一家读取器（全部只读）
+  readers.py            十五家读取器 + 4 张占位源（全部只读）
   dshwrite.py           dsh 事件合成 + 多帧 zstd 落盘（幂等+增量）+ 工作区挂载
   zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
   archive.py            Markdown 归档

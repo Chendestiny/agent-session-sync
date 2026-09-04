@@ -1,9 +1,9 @@
 # agent-session-sync
 
-Unify session histories from **11 AI coding agents**, continue any conversation in dsh, export to Markdown. Idempotent, incremental, ring-safe — imported sessions are marked and never flow back.
+Unify session histories from **15 AI coding agents**, continue any conversation in dsh, export to Markdown. Idempotent, incremental, ring-safe — imported sessions are marked and never flow back.
 
-**Read (11 sources)**: zcode · hermes · dsh (DeepSeek Harness) · codex · workbuddy · Claude Code · opencode · qoder · OpenClaw · Cursor · Trae
-**Write (6 targets)**: dsh · codex · Claude Code · hermes · opencode · workbuddy
+**Read (15 sources)**: zcode · hermes · dsh (DeepSeek Harness) · codex · workbuddy · Claude Code · opencode · qoder · OpenClaw · Cursor · Trae · MiniMax Code · Pi Agent · Gemini CLI · Cline
+**Write (10 targets)**: dsh · codex · Claude Code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline
 
 ## Install
 
@@ -26,7 +26,7 @@ Requirements: Python 3.10+ · `pip install zstandard` (the only third-party depe
 ## Quick commands
 
 ```bash
-ass web        # dashboard at 127.0.0.1:8321: 11-source timeline, session list, per-turn bars, export, path binding
+ass web        # dashboard at 127.0.0.1:8321: 15-source timeline, session list, per-turn bars, export, path binding
 ass doctor     # one-click health check + self-repair (deps, selftest, stores, baselines, skill bridges, shims)
 ass selftest   # sandboxed end-to-end test (never touches real data)
 ass status     # detect which agent stores exist on this machine

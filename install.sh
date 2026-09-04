@@ -9,7 +9,7 @@
 #     bash install.sh /path/to/agent-session-sync-main.zip
 #   加速镜像前缀（可选）：ASS_GH_PREFIX=https://ghfast.top/ （拼在 GitHub 下载地址前面）
 # 效果：
-#   1. 工具包落位 ~/.agents/skills/session-sync（旧版自动备份为 .bak-<时间戳>）
+#   1. 工具包落位 ~/.agents/skills/session-sync（旧版自动备份为 .bak-<时间戳>，只保留最近 2 份）
 #   2. 注册为 skill，各 agent 可用「同步会话」一句话触发
 #   3. 检查 python / zstandard 环境并给出提示
 set -euo pipefail
@@ -83,9 +83,20 @@ step '2/3' '落位到 skill 目录 ...'
 mkdir -p "$(dirname "$DEST")"
 if [ -d "$DEST" ]; then
     bak="$DEST.bak-$(date +%Y%m%d-%H%M%S)"
+    while [ -e "$bak" ]; do sleep 1; bak="$DEST.bak-$(date +%Y%m%d-%H%M%S)"; done   # 同秒撞名防嵌套
     mv "$DEST" "$bak"
     echo "      旧版本已备份：$bak"
 fi
+# 备份滚动：只保留最近 2 份（含刚建这份）——反复重装不再堆积
+keep=2
+baks=()
+while IFS= read -r b; do baks+=("$b"); done < <(ls -d "$DEST".bak-* 2>/dev/null | sort)
+i=0
+while [ $(( ${#baks[@]} - i )) -gt "$keep" ]; do
+    rm -rf "${baks[$i]}"
+    echo "      清理旧备份：${baks[$i]}"
+    i=$((i + 1))
+done
 mkdir -p "$DEST"
 # 白名单复制（只拷 skill 包需要的文件，工作副本里的运行产物/私有数据不会带入）
 for item in SKILL.md AGENTS.md README.md README_EN.md LICENSE \

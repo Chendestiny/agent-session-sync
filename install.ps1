@@ -8,7 +8,7 @@
 #   Mirror prefix (optional, prepended to the GitHub download URL):
 #            $env:ASS_GH_PREFIX = 'https://ghfast.top/'
 # Effects:
-#   1. Toolkit lands in %USERPROFILE%\.agents\skills\session-sync (old copy backed up as .bak-<timestamp>)
+#   1. Toolkit lands in %USERPROFILE%\.agents\skills\session-sync (old copy backed up as .bak-<timestamp>, newest 2 kept)
 #   2. Registers as a skill: say "sync sessions" (or Chinese) to any agent to trigger
 #   3. Checks python / zstandard and prints hints
 # NOTE: keep this file ASCII-only and BOM-less. It must survive `irm | iex` on both
@@ -80,8 +80,19 @@ if (-not (Test-Path (Split-Path $dest -Parent))) {
 }
 if (Test-Path $dest) {
     $bak = "$dest.bak-" + (Get-Date).ToString('yyyyMMdd-HHmmss')
+    while (Test-Path -LiteralPath $bak) { Start-Sleep -Milliseconds 500; $bak = "$dest.bak-" + (Get-Date).ToString('yyyyMMdd-HHmmss') }   # same-second collision guard
     Move-Item -LiteralPath $dest -Destination $bak -Force
     Write-Host "      Old version backed up: $bak"
+}
+# Rolling backups: keep only the newest 2 (incl. the one just made), so repeated
+# reinstalls never pile up dozens of .bak-* dirs in the skills folder.
+$keepBak = 2
+$baks = @(Get-ChildItem -LiteralPath (Split-Path $dest -Parent) -Filter 'session-sync.bak-*' -Directory | Sort-Object Name)
+if ($baks.Count -gt $keepBak) {
+    $baks | Select-Object -First ($baks.Count - $keepBak) | ForEach-Object {
+        Remove-Item -LiteralPath $_.FullName -Recurse -Force
+        Write-Host "      Removed old backup: $($_.Name)"
+    }
 }
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 # allowlist copy (only what the skill bundle needs; worktree artifacts/private data never carried over)

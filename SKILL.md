@@ -5,7 +5,7 @@ description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent
 
 # 跨 Agent 会话同步（session-sync）
 
-本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / claude / opencode / qoder / openclaw / cursor / trae 十一家会话，
+本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / claude / opencode / qoder / openclaw / cursor / trae / minimax / pi / gemini / cline 十五家会话（mimo/kimi 等占位待核验），
 写入 dsh（可续聊），并支持 Markdown 归档。
 **详细操作手册见同目录 `AGENTS.md`**（cookbook、安全铁律、故障排查、格式文档地图），
 格式深度规格见 `docs/FORMATS.md`。以下是要点。
@@ -61,6 +61,10 @@ python sync.py to-claude --source all --scope inc --apply  # 反向写入 claude
 python sync.py to-hermes --source all --scope inc --apply  # 反向写入 hermes
 python sync.py to-opencode --source all --scope inc --apply   # 反向写入 opencode（桌面/CLI 共库）
 python sync.py to-workbuddy --source all --scope inc --apply  # 反向写入 workbuddy（db+jsonl 双写）
+python sync.py to-minimax --source all --scope inc --apply    # 反向写入 MiniMax Code（须先退出应用）
+python sync.py to-pi --source all --scope inc --apply          # 反向写入 Pi Agent
+python sync.py to-gemini --source all --scope inc --apply      # 反向写入 Gemini CLI
+python sync.py to-cline --source all --scope inc --apply       # 反向写入 Cline（VS Code 扩展）
 # 非 dsh 目标的『全部』默认含 dsh 自身（dsh 会话反向流出）；zcode 只读不可写（实证渲染 bug）
 python sync.py pull --source all --scope inc      # A→C：各源 → 规范库 ~/.session-sync（安全，免退出任何应用）
 python sync.py push --target codex --source all --scope inc --apply   # C→B：断点续推（中途换 agent 可继续）
