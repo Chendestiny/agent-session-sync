@@ -2,13 +2,13 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-十九家 agent 一张网：**15 家会话全互通**——codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / claude code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline（trae CN 版正文库自加密暂不可读）；**4 张占位卡**——grok / mimo / kimi / copilot（路径与格式已源码核验，装好即接）。
+十九家 agent 一张网：codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / Claude Code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline / grok / mimo / kimi / copilot。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：15 读 + 10 写 + 4 占位 = 19 卡，而非两两直连）。
+单向归一（A→C→B：19 读 + 10 写，而非两两直连）。
 
-| A · 读取源（15 家 + 4 占位） | C · 归一化 | B · 写入目标（10 家 + 归档） |
+| A · 读取源（19 家） | C · 归一化 | B · 写入目标（10 家 + 归档） |
 |---|---|---|
-| codex CLI · hermes · dsh · zcode（只出不进） · workbuddy · claude code · opencode · qoder · openclaw · cursor · trae · MiniMax Code · Pi Agent · Gemini CLI · Cline（grok/mimo/kimi/copilot 占位待实装） | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · claude code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline ＋ Markdown 归档（浏览/搜索） |
+| codex CLI · hermes · dsh · zcode · workbuddy · Claude Code · opencode · qoder · openclaw · cursor · trae · MiniMax Code · Pi Agent · Gemini CLI · Cline · grok · mimo · kimi · copilot | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · Claude Code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline ＋ Markdown 归档（浏览/搜索） |
 
 ## 📋 前置条件
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，
@@ -30,18 +30,9 @@ Linux / macOS / WSL：
 帮我安装 agent-session-sync：curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.sh | bash
 ```
 
-> WSL/Linux 下自动只发现**该系统内**安装的 agent（如 `~/.codex`、`~/.dsh`）；
-> zcode / hermes / workbuddy 装在 Windows 侧的，请在 Windows 上跑同步。
->
-> **skills 目录自动桥接**：各 agent 只扫自家 skills 目录（如 `~/.workbuddy/skills`、
-> `~/.claude/skills`、`~/.codex/skills`、`~/.hermes/skills`、`~/.dsh/skills`），大多不认通用位
-> `~/.agents/skills`。安装脚本会在每个检测到的自家 skills 目录里放一个指向唯一源
-> `~/.agents/skills/session-sync` 的 junction/symlink——单一源、全家电齐、升级改一处生效
-> （桥接后需重启对应 agent 才会重新扫描）。
->
-> **没有 Python 环境也能装**（Windows）：安装器检测不到可用的 `python` 时，自动下载官方
-> 嵌入式 CPython 到 `~/.agents/py-runtime`（免管理员、不改系统、约 12 MB），装好 pip 与
-> zstandard，shim 直接指向它，并把它加进用户 PATH——agent 里的 `python sync.py` 也能跑。
+> WSL/Linux 只发现**该系统内**装的 agent，Windows 侧的请在 Windows 上跑。
+> skills 自动桥接进各家自家 skills 目录（单一源 junction/symlink，升级改一处生效，桥接后重启 agent）。
+> Windows 没有 Python 也能装：自动下载嵌入式 CPython 到 `~/.agents/py-runtime`（约 12 MB，免管理员）。
 
 ### ▶️ 执行同步（装完对 agent 说一句）
 安装脚本（含下面的离线办法）会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
@@ -129,62 +120,20 @@ python sync.py prune --session "标题或id子串" --hard --apply   # dsh 瘦身
 >
 > AI agent 操作手册：**AGENTS.md** 是给 agent 看的完整入口（cookbook / 安全铁律 / 故障排查 / 升级适配）。
 
-## 🧩 作为 skill 使用（整目录即 skill bundle）
+**作为 skill 使用**：整目录即 skill 包，对任意 agent 说一句「同步会话」即按 `SKILL.md` 纪律执行；
+手动挂载：`mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"`。
+过滤 `--session/--cwd/--since`，超长会话 `to-dsh --budget` 三层裁剪保续聊。
 
-整目录即 skill 包。装好后在任何 agent 里说一句“同步一下会话”，agent 按 SKILL.md 纪律执行
-（selftest → dry-run → 确认 → apply）；手动挂载：`mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"`。
-通用过滤：`--session/--cwd/--since/--limit`；`to-dsh --budget <tokens>` 超长会话三层裁剪保续聊。
+**发布前验证**：19 家读取真库比对零偏差；10 家写入经 UI / 原生后端读回验收（dsh 读回 100%，
+`tools/verify-dsh-backend.cmd` 可复跑）；194 项沙箱自检 + 48 格真库矩阵回归全绿；幂等增量、
+防环三件套（uuid5 版本位 / 旁路清单 / `import-*` 前缀，标题带 `[来源]`）、备份还原与超长裁剪均实测。
+62 条踩坑全部修进代码，明细见 **[docs/pitfalls.md](docs/pitfalls.md)**（按家分组，含修复方案）。
 
-## 🧪 发布前验证概览
+**安全边界**：读取永远只读（sqlite `mode=ro`）；写入只新增 `import-*` 幂等会话，不触碰原生数据，
+写前自动备份；存储异常时用 `*.agentsync-bak-*` 备份覆盖回原文件恢复（需退出对应应用）。
 
-以下能力均在真实数据上验证通过（方法见各文档，可在你机器复跑）：
-
-- ✅ **15 家读取**全部真库验证：工具调用往返 / reasoning / 失败态 / 分区编码全量比对零偏差
-- ✅ **10 家写入**真库落盘：minimax 经 UI 验收；dsh 用原生后端读回 100%（tools/verify-dsh-backend.cmd 可复跑）
-- ✅ **回归双保险**：194 项沙箱自检 + 48 格真库矩阵回归（每格写 1 条 + 幂等复跑 + 读回 + 防环拦截）
-- ✅ **幂等增量**：重复导入去重；源会话增长只追加新轮次
-- ✅ **防环三件套**：uuid5 版本位 / 旁路清单（doctor 反推法自动审计）/ import-* 前缀；导入一律带 `[来源]` 标题
-- ✅ **备份还原 + 超长裁剪**：IR 快照跨家幂等还原、加密源（trae）转原始库快照、三层预算保续聊
-
-### ⚠️ 踩坑记录
-
-62 条实测坑（dsh 投影缓存 / codex threads 索引 / opencode 事件溯源 / gemini 流式碎片等）
-全部修进代码，明细见 **[docs/pitfalls.md](docs/pitfalls.md)**（按家分组，含修复方案）。
-
-## 📂 目录结构
-
-```
-📖 AGENTS.md            AI agent 操作手册（交给 agent 读的入口）
-🧩 SKILL.md             skill 封装（整目录即 skill bundle，junction 到 skills 目录）
-⌨️ sync.py              CLI 入口（status/web/doctor/to-*/attach-dsh/backup/restore/regtest/prune/archive/verify/selftest）
-titles.json             会话标题覆盖表（{源ID: 新标题}，配合 to-dsh --force --titles 重写）
-📐 docs/FORMATS.md      格式总览 + 归一化 IR + 索引
-🔬 docs/agents/         各家会话结构详解（一家一册，15 读写 + 4 占位）
-📑 examples/            真实示例：命令输出转录 + 转换实例（含再生成方法）
-🛠️ tools/
-  verify-dsh-backend.mjs   dsh 原生后端读回校验（Node 22+，先 nvm use 22）
-  verify-dsh-backend.cmd   上者的 Windows 包装器（自动选 nvm 22.x）
-📦 agentsync/
-  paths.py              各家存储定位 + zcode project_id 规则
-  model.py              归一化 IR + token 估算 + 三层预算裁剪
-  readers.py            十五家读取器 + 4 张占位源（19 卡全景，全部只读）
-  dshwrite.py           dsh 事件合成 + 多帧 zstd 落盘（幂等+增量）+ 工作区挂载
-  zcodewrite.py         [已废弃] zcode 写入历史实现，保留供参考（勿调用）
-  archive.py            Markdown 归档
-  validate.py           dsh 事件纪律校验
-  webui/                Web dashboard（web 子命令 → 127.0.0.1:8321；POST 仅目录绑定族例外，页面随包离线可用）
-🗂️ archive/             归档输出
-📚 reference/dsh-chat-import/  参考仓库源码
-.test-dsh-root/ .test-zcode-db.sqlite   测试产物（可删）
-```
-
-## 🔒 安全边界
-
-- 🔍 读取永远只读（sqlite `mode=ro` URI）。
-- ✏️ 写入目标（dsh / codex / claude code / hermes / opencode / workbuddy / minimax / pi / gemini / cline）：只新增幂等导入会话
-  （`import-*` / uuid5 id），不触碰原生会话，每次写入前自动备份。
-- 🚫 **zcode 暂不写入**（写入方向已于 2026-08-26 移除，写入器存档于 `zcodewrite.py`）。
-- ♻️ 恢复方法：存储异常时，用 `*.agentsync-bak-*` 自动备份覆盖回原文件（需退出对应应用）。
+**目录**：`sync.py`（CLI 入口）· `agentsync/`（readers / writers / webui / archive）·
+`docs/agents/`（一家一册）· `examples/`（真实转换实例）· `titles.json`（标题覆盖表）。
 
 ---
 

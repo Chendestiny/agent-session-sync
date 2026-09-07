@@ -1,10 +1,9 @@
 # agent-session-sync
 
-Unify session histories from **19 AI coding agents** (15 fully working + 4 placeholders verified from source, pending install), continue any conversation in dsh, export to Markdown. Idempotent, incremental, ring-safe — imported sessions are marked and never flow back.
+Unify session histories from **19 AI coding agents**, continue any conversation in dsh, export to Markdown. Idempotent, incremental, ring-safe — imported sessions are marked and never flow back.
 
-**Read (15 sources)**: zcode · hermes · dsh (DeepSeek Harness) · codex · workbuddy · Claude Code · opencode · qoder · OpenClaw · Cursor · Trae · MiniMax Code · Pi Agent · Gemini CLI · Cline
+**Read (19 sources)**: zcode · hermes · dsh (DeepSeek Harness) · codex · workbuddy · Claude Code · opencode · qoder · OpenClaw · Cursor · Trae · MiniMax Code · Pi Agent · Gemini CLI · Cline · grok · mimo · kimi · copilot
 **Write (10 targets)**: dsh · codex · Claude Code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline
-**Placeholders (4)**: grok · mimo · kimi · copilot — storage paths & formats verified from source, readers land when installed
 
 ## Install
 
@@ -20,9 +19,9 @@ Linux / macOS / WSL:
 curl -fsSL https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.sh | bash
 ```
 
-The installer drops the toolkit at `~/.agents/skills/session-sync`, registers global commands (`session-sync` and the short alias `ass`), and bridges the skill into each detected agent's own skills dir (WorkBuddy / Claude Code / codex / hermes / dsh each keep their own — they don't read the common `~/.agents` location).
+The installer drops the toolkit at `~/.agents/skills/session-sync`, registers global commands (`session-sync`, alias `ass`), and bridges the skill into each detected agent's own skills dir — single source, upgrade once.
 
-Requirements: Python 3.10+ · `pip install zstandard` (the only third-party dependency). **No Python at all?** On Windows the installer auto-downloads an embedded CPython to `~/.agents/py-runtime` (no admin, ~12 MB) and points everything at it.
+Requirements: Python 3.10+ · `pip install zstandard` (only third-party dep). No Python on Windows? An embedded CPython (~12 MB, no admin) is auto-downloaded.
 
 ## Quick commands
 
