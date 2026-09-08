@@ -16,7 +16,7 @@
 
 ## 🚀 快速开始
 ### 🗣️ 对任意 agent 一句话开始（零手动配置）
-按你的平台，把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
+**方式一 · 安装脚本（推荐）**——把下面这句发给任何一个能联网 + 能执行命令的 agent（dsh / zcode / hermes / Claude 都行）：
 
 Windows（PowerShell）：
 
@@ -33,6 +33,15 @@ Linux / macOS / WSL：
 > WSL/Linux 只发现**该系统内**装的 agent，Windows 侧的请在 Windows 上跑。
 > skills 自动桥接进各家自家 skills 目录（单一源 junction/symlink，升级改一处生效，桥接后重启 agent）。
 > Windows 没有 Python 也能装：自动下载嵌入式 CPython 到 `~/.agents/py-runtime`（约 12 MB，免管理员）。
+
+**方式二 · 通过 skills 生态安装**（[skills.sh](https://skills.sh) / Clawhub 等市场用户）：
+
+```bash
+npx skills add Chendestiny/agent-session-sync
+```
+
+> 整个仓库就是一个 skill bundle（根目录 `SKILL.md` + 完整工具包），安装时整目录拷入 skills 目录。
+> 此方式不带安装脚本的 Python 运行时下载与全局命令注册，需自备 Python 3.10+ 与 `pip install zstandard`。
 
 ### ▶️ 执行同步（装完对 agent 说一句）
 安装脚本（含下面的离线办法）会把整个工具包落到 `~/.agents/skills/session-sync` 并注册为 skill——装完对它说以下任意一句（**建议带主语与意图的完整句**；纯「同步会话」四字在 skill 多、会话多的环境下可能检索慢或理解偏差）：
