@@ -25,6 +25,8 @@ mklink /J "%USERPROFILE%\.agents\skills\session-sync" "<项目目录>"
 
 （junction 不需要管理员权限；dsh/zcode/hermes 均从 `~/.agents/skills/` 发现。）
 
+**精简包自愈**：若本目录没有 `sync.py`（部分市场只收两级目录结构的精简 zip，本目录仅为引导包）——先做完整安装：Windows 让 agent 跑 `irm https://raw.githubusercontent.com/Chendestiny/agent-session-sync/main/install.ps1 | iex`（Linux/macOS 用 install.sh，或 README「方式一」的一句话安装），装好后完整工具包会**原位替换本目录**，再按本手册继续。
+
 ## 执行纪律（必须遵守）
 
 1. **第一条命令跑自检**：`python sync.py selftest`，全绿才继续（沙箱运行，不碰真实数据）。
