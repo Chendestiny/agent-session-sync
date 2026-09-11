@@ -112,6 +112,8 @@ def _collect(source: str, p, with_imports: bool):
         return readers.read_codex(p.codex_sessions, include_imports=with_imports)
     if source == "workbuddy":
         return readers.read_workbuddy(p.workbuddy_home, include_imports=with_imports)
+    if source == "workbuddy-ai":
+        return readers.read_workbuddy(p.workbuddy_ai_home, include_imports=with_imports, source="workbuddy-ai")
     if source == "claude":
         return readers.read_claude(p.claude_projects, include_imports=with_imports)
     if source == "opencode":
@@ -145,6 +147,7 @@ def _writers():
         "hermes": (lambda p: p.hermes_db, hermeswrite),
         "opencode": (lambda p: p.opencode_db, opencodewrite),
         "workbuddy": (lambda p: p.workbuddy_home, workbuddywrite),
+        "workbuddy-ai": (lambda p: p.workbuddy_ai_home, workbuddywrite),
         "minimax": (lambda p: p.minimax_home, minimaxwrite),
         "pi": (lambda p: p.pi_home, piwrite),
         "gemini": (lambda p: p.gemini_home, geminiwrite),

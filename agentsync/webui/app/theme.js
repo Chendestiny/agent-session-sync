@@ -1,5 +1,5 @@
 /* 主题（换肤）：html[data-theme] 切一组 CSS 变量，即时生效（无需重绘视图）。
-   三套配色移植自 D:\Project\my-website\frontend\src\themes.js（4 选 3，原 midnight 深色退役）：
+   三套配色移植自个人项目 my-website 的 frontend/src/themes.js（4 选 3，原 midnight 深色退役）：
    indigo = 深空蓝紫（其 dark：近黑底 + indigo #6366f1 / cyan 光效）——默认
    olive  = 冷灰橄榄（其 olive：灰调底 + 低饱和高亮橄榄 #a3e635，工具感）
    sand   = 浅色暖沙（其 light：沙白纸面 + 赤陶 #c2410c）

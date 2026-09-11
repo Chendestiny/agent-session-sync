@@ -254,7 +254,7 @@ def synthesize(
     # 来源前缀自动生成：不依赖 titles.json 分发（第三方 skill 副本里没有该文件），
     # 侧栏里一眼区分「这条从哪来」。已有前缀（titles.json 时代写入的）不重复加。
     if title and not title.startswith(
-        ("[zcode] ", "[hermes] ", "[codex] ", "[workbuddy] ", "[dsh] ")
+        ("[zcode] ", "[hermes] ", "[codex] ", "[workbuddy] ", "[workbuddy-ai] ", "[dsh] ")
     ):
         title = f"[{provider}] {title}"
     if title:
@@ -439,7 +439,7 @@ def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None,
         src = marker.get("data", {}).get("tool", "dsh" if not sid.startswith("import-") else "?")
         title_ev = next((e for e in reversed(events) if e.get("type") == "session/title"), None)
         title = (title_ev or {}).get("data", {}).get("title", "")
-        for pref in ("[hermes] ", "[codex] ", "[workbuddy] ", "[zcode] ",
+        for pref in ("[hermes] ", "[codex] ", "[workbuddy] ", "[workbuddy-ai] ", "[zcode] ",
                      "[claude] ", "[opencode] ", "[dsh] "):
             if title.startswith(pref):
                 title = title[len(pref):]

@@ -64,6 +64,10 @@ def _imported_flag(source: str, sid: str, p) -> bool:
         from .. import paths as _pp
         p2 = _pp.detect()
         return bool(p2.cline_home) and sid in _cl_ids(p2.cline_home)
+    if source == "mimo":
+        return bool(p.mimo_home) and sid in readers._mimo_import_ids(os.path.join(str(p.mimo_home), "mimocode.db"))
+    if source == "kimi":
+        return bool(p.kimi_home) and sid in readers._bypass_import_ids(str(p.kimi_home))
     return False  # zcode/qoder/openclaw 从不是写入目标
 
 
@@ -228,6 +232,10 @@ def _display_sessions(source: str, p):
         return readers.read_gemini(p.gemini_home, include_imports=True)
     if source == "cline" and p.cline_home:
         return readers.read_cline(p.cline_home, include_imports=True)
+    if source == "mimo" and p.mimo_home:
+        return readers.read_mimo(p.mimo_home, include_imports=True, include_archived=True)
+    if source == "kimi" and p.kimi_home:
+        return readers.read_kimi(p.kimi_home, include_imports=True)
     return readers.load_sources([source], p).get(source, [])
 
 

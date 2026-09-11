@@ -126,12 +126,29 @@ def _prefixed_title(source: str, title: str) -> str:
     return title
 
 
+def _import_cwd(cwd: str) -> str:
+    """导入用 cwd 规整：WorkBuddy 的"默认项目目录"是每会话一个时间戳/automation 目录
+    （~/WorkBuddy/<ts>、~/WorkBuddy/automation-<ts>），原样保留会让目标端把每条会话
+    各算一个分区（侧栏按目录=分区原则）。折叠到父目录 ~/WorkBuddy，让默认项目的
+    会话归入同一分区；真实项目 cwd（BI_frontend 等）不动。"""
+    import re as _re
+    m = _re.search(r"[\\/]WorkBuddy(?: AI)?[\\/](?:automation-)?\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$", cwd)
+    if m:
+        folder = m.group(0).lstrip("\\").split("\\")[0]
+        return cwd[:m.start()] + "\\" + folder
+    return cwd
+
+
 def plan_write(wb_home: str, sess: Session, budget: int | None, force: bool = False, titles: dict | None = None) -> dict:
     """workbuddy 版写入计划：create / append / up-to-date / skip / skip-deleted。"""
     wb_home = str(wb_home)
     turns, trimmed = apply_budget_trim(sess.turns, budget)
     sid = local_id(sess)
-    cwd = sess.cwd or os.path.expanduser("~")
+    cwd = _import_cwd(sess.cwd or os.path.expanduser("~"))
+    # playground（is_playground）会话保持原始单会话时间戳目录——原生 pg 会话就是这样存的，
+    # 在国际版 UI「任务栏」可见且不产生空间分区；非 pg 会话才折叠到父目录聚合成分区
+    if getattr(sess, "is_playground", False):
+        cwd = sess.cwd or cwd
     if not os.path.isdir(cwd):  # WorkBuddy 拒开 cwd 缺失的会话（agentctxsync 同款兜底）
         cwd = os.path.expanduser("~")
     path = os.path.join(wb_home, "projects", _workbuddy_slug(cwd), f"{sid}.jsonl")
@@ -144,7 +161,8 @@ def plan_write(wb_home: str, sess: Session, budget: int | None, force: bool = Fa
             "cwd": cwd, "events": [], "stats": stats, "trimmed": trimmed, "sourceTurns": len(turns),
             "title": _prefixed_title(sess.source,
                                      (sess.title or "").strip() or (turns[0].prompt[:40] if turns else "")),
-            "model": sess.model, "created": created, "updated": sess.updated_at or created}
+            "model": sess.model, "created": created, "updated": sess.updated_at or created,
+            "is_playground": bool(getattr(sess, "is_playground", False))}
     if not turns:
         return {**plan, "action": "skip", "reason": "无可导入轮次"}
     if sess.source_id in load_tombstones(wb_home):
@@ -185,7 +203,8 @@ def apply_write(plan: dict) -> str:
             "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (plan["sid"], plan["cwd"], _user_id(os.path.dirname(plan["db"])),
              plan["title"] or "Imported session", "completed",
-             plan["created"] or now_ms, plan["updated"] or now_ms, 0, "craft",
+             plan["created"] or now_ms, plan["updated"] or now_ms,
+             1 if plan.get("is_playground") else 0, "craft",
              plan["model"], now_ms),
         )
         con.commit()

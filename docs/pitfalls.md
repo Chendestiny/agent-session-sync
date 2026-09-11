@@ -31,7 +31,7 @@
 | resume 列表不认外来 rollout | 文件落位但 picker 只显示原生会话 | 0.137 的列表读 `~/.codex/state_N.sqlite` 的 **threads 索引**而非扫描文件；写入器落盘时同步登记 threads 行（模板取自真库显示行：`\\?\` 前缀 cwd、字符串秒时间戳） |
 | 极简 session_meta | 同上（即使登记了索引，续聊解析也可能缺上下文） | meta 对齐原生字段集：originator/cli_version/source/thread_source/base_instructions（从本机原生 rollout 动态抄） |
 | **`<` 开头提问被当注入过滤（已知未修）** | 以 `<el-button`、`<template` 等开头的真实代码提问整轮丢失（本机实测已丢 3 轮） | 触发条件：用户消息以 `<` 开头且非已知注入标签。修法：改为已知注入标签白名单（`<user_instructions>` `<environment_context>` `<permissions>` `<project_layout>` `<turn_aborted>`），其余 `<` 开头照收 |
-| rollout 无标题，首问多为贴入路径 | 同项目多会话显示标题撞车（实测 9×「D:\BI_frontend\src\views\…」开头完全一致；threads 索引标题也是首问截断，救不了） | `read_codex` 标题剥盘符路径前缀取真问题；webui 显示层再叠加仓库根 titles.json 人工标题（`SESSION_SYNC_TITLES` 可改指；实测 86/86 覆盖后重复组 7→0） |
+| rollout 无标题，首问多为贴入路径 | 同项目多会话显示标题撞车（实测 9×「D:\repo\src\views\…」开头完全一致；threads 索引标题也是首问截断，救不了） | `read_codex` 标题剥盘符路径前缀取真问题；webui 显示层再叠加仓库根 titles.json 人工标题（`SESSION_SYNC_TITLES` 可改指；实测 86/86 覆盖后重复组 7→0） |
 
 ## claude code
 
@@ -61,7 +61,7 @@
 | **消息形状不完整** | 点开会话报 `Missing key at [0]["info"]["agent"]` | message.data 与事件 info 必须是完整原生形状：user 带 agent/model/summary；assistant 带 parentID/mode/path/cost/tokens/modelID/finish——写入器按原生模板补齐 |
 | part 缺 time / tool state 不全 | `Missing parts[0]["time"]` → `state["title"]` → `Expected ToolState` 层层报错 | part 一律带 `time{start,end}`；tool state 六键齐（status/input(对象)/output/metadata/title/time）；**ToolState 是按 status 的可辨识联合**，failed 分支形状不同——失败调用统一按 completed 形状写（空输出标 `(failed)`） |
 | **桌面"只有 N 条" vs 全局 M 条（2026-09-01 惨案）** | webui/reader 报 45，用户桌面只见 12；误把"某分区恰好 12 条"当作用户的那 12 条 → 删错了集合，用户可见项目全空 | 桌面按**项目分区**显示（当前上下文），其他 cwd 的会话（CLI/自动化产生）在库但不在视野——数量差是视野差不是丢数据。**判定"哪批是用户的"必须以用户念出的标题为准，数字巧合（12=12）不能当证据**；正确流程：让用户报项目路径+标题 → 反查 id 集合 → dry-run 打印保留清单核对 → 才动手 |
-| **行级删除的安全性（还原实验证实）** | 删 33 条后桌面"全没了"，疑似缓存坏 | 其实桌面**如实反映库**：当时删的恰好是用户两个可见项目（Default Project + BI_frontend）的全部会话；还原备份后立即恢复。行级删除配方：message/part 按 session_id、event/event_sequence 按 **aggregate_id**（不是 session_id）、session 按 id，事务内 + 全库备份 + 退出应用 |
+| **行级删除的安全性（还原实验证实）** | 删 33 条后桌面"全没了"，疑似缓存坏 | 其实桌面**如实反映库**：当时删的恰好是用户两个可见项目（默认分区 + 一个常用项目）的全部会话；还原备份后立即恢复。行级删除配方：message/part 按 session_id、event/event_sequence 按 **aggregate_id**（不是 session_id）、session 按 id，事务内 + 全库备份 + 退出应用 |
 
 ## workbuddy
 

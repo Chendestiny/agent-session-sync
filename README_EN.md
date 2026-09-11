@@ -1,9 +1,9 @@
 # agent-session-sync
 
-Unify session histories from **19 AI coding agents**, continue any conversation in dsh, export to Markdown. Idempotent, incremental, ring-safe — imported sessions are marked and never flow back.
+Unify session histories from **21 AI coding agents**, continue any conversation in dsh, export to Markdown. Idempotent, incremental, ring-safe — imported sessions are marked and never flow back.
 
-**Read (19 sources)**: zcode · hermes · dsh (DeepSeek Harness) · codex · workbuddy · Claude Code · opencode · qoder · OpenClaw · Cursor · Trae · MiniMax Code · Pi Agent · Gemini CLI · Cline · grok · mimo · kimi · copilot
-**Write (10 targets)**: dsh · codex · Claude Code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline
+**Read (21 sources)**: zcode · hermes · dsh (DeepSeek Harness) · codex · workbuddy · workbuddy-ai (WorkBuddy AI intl) · Kilo CLI · Claude Code · opencode · qoder · OpenClaw · Cursor · Trae · MiniMax Code · Pi Agent · Gemini CLI · Cline · grok · mimo · kimi · copilot
+**Write (12 targets)**: dsh · codex · Claude Code · hermes · opencode · Kilo CLI · workbuddy · workbuddy-ai · MiniMax Code · Pi Agent · Gemini CLI · Cline
 
 ## Install
 

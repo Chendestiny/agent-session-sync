@@ -1,6 +1,6 @@
 # Cline 会话结构详解
 
-核实基线：源码（D:\Project_github\cline-main，apps/vscode 的
+核实基线：源码（Cline 开源仓库 apps/vscode 的
 openDiskConversationHistory.ts/disk.ts）+ 本机实测（2026-09-03，VS Code 1.103.2
 + Cline 4.1.17 一条真实对话）；读取器 `agentsync.readers.read_cline`（第 15 家读取源）。
 

@@ -36,3 +36,4 @@ local/
 
 .agentsync-deleted.json
 scripts/pre_import_ids.json
+.agents/

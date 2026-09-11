@@ -8,7 +8,12 @@
 ## 1. 存储布局
 
 ```
-~/.workbuddy/                     ← 5.3.x 部分机器为 ~/.workbuddy-ai（优先探测它）
+~/.workbuddy/                     ← 国内版
+~/.workbuddy-ai/                  ← 国际版（WorkBuddy AI；D:\workbuddyai 仅为程序安装目录。
+                                     两目录同 layout，本工具为两个独立源 workbuddy / workbuddy-ai，
+                                     独立探测互不占位；读取器 read_workbuddy(home, source=…) 与
+                                     workbuddywrite 通用；CLI to-workbuddy / to-workbuddy-ai；
+                                     push --target 同名；防环按 uuid5 版本位各自生效）
 ├── workbuddy.db                  ← 会话元数据库（SQLite，sessions 表）
 ├── edge-sync-mapping-v2.db       ← WorkBuddy 云同步映射（⚠️ 绝对不要碰，
 │                                    启动 MIGRATE 会自行登记）
@@ -64,6 +69,19 @@ model: custom-local:qwen3.6-35b}`。查询排空 `deleted_at IS NULL`，按
 
 **已知分组边界**：WorkBuddy 默认项目目录是 `~/WorkBuddy/<时间戳>`（嵌套在主目录下），
 这类 cwd 按嵌套规则不建 dsh 工作区（dsh 启动会清理嵌套记录）→ 留在未分组，属预期。
+
+**跨版本迁移边界（workbuddy ↔ workbuddy-ai 双向实测 2026-09-11，国际版 5.5.2）**：
+**两版的「任务」栏 = `is_playground` 标记位视图**（国际版：原生 pg「简单问候」pg=1 在任务栏、
+pg=0 的不进，21 条导入翻转 pg=1 后任务栏即时认账；国内版：反向写入的 `[workbuddy-ai] 简单问候`
+翻转 pg=1 后同样进任务列表——**两版同义，只是一个标记位，非独立存储**）。
+会话正典仍是 db+JSONL 双层，两版 layout 相同全可读写；国内任务(19)列表是 UI 收敛视图。
+两栏归属由 cwd 结构决定：pg 会话保持**原始单会话时间戳目录**（`~/WorkBuddy/<ts>`、
+国际版 `~/WorkBuddy AI/<ts>`），任务栏可见且不产生空间分区；非 pg 会话由
+workbuddywrite._import_cwd() 折叠到父目录聚合成单一空间（否则每条会话劈成独立分区；
+16 条 automation 保留在 WorkBuddy 空间是正常归属，若要分区清零可整体翻 pg=1）。
+（writer 按 sess.is_playground 自动区分：read_workbuddy 把 is_playground 带进 IR。）
+注意 UI 空间列表可能在翻转 pg 后残留旧口径——彻底重启（MIGRATE 重跑）刷新。
+playground（国内版「未分区」）会话读取需 --include-playground 显式纳入。
 
 ## 5. 写入配方（agentctxsync 实机验证过的约束）
 

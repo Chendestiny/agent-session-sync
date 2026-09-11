@@ -1,6 +1,6 @@
 # Gemini CLI 会话结构详解
 
-核实基线：源码（D:\Project_github\gemini-cli-main，chatRecordingService/sessionUtils）
+核实基线：源码（Gemini CLI 开源仓库的 chatRecordingService/sessionUtils）
 + 本机实测（2026-09-03，~/.gemini/tmp/*/chats 四条会话）；读取器
 `agentsync.readers.read_gemini`（第 14 家读取源）。
 
@@ -14,7 +14,7 @@
 └── tmp\<项目标识>\logs / memory / checkpoints   = 日志/记忆/检查点（不同步）
 ```
 
-项目标识 = 工作目录名（如 D:\BI_x → bi-x；主目录 → 用户名）。
+项目标识 = 工作目录名（如 D:\my-app → my-app；主目录 → 用户名）。
 
 ## 2. 行形状（源码 chatRecordingService）
 

@@ -1,6 +1,6 @@
 # Grok Build 会话结构详解（占位：已装未认证，待实装核验）
 
-核实基线：源码核验（D:\Project_github\grok-build-main，Rust monorepo；xai-dirs +
+核实基线：源码核验（Grok Build 开源仓库（Rust monorepo）的 xai-dirs +
 xai-grok-pager/docs/user-guide/17-sessions.md）。本机已装（~/.grok 有二进制+配置），
 **无 xAI 账户未认证 → 无会话数据**，reader/writer 待实装。
 

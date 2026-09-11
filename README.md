@@ -2,13 +2,13 @@
 
 📌 简体中文 | [🇬🇧 English](./README_EN.md)
 
-十九家 agent 一张网：codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / Claude Code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline / grok / mimo / kimi / copilot。
+二十一家 agent 一张网：codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / workbuddy-ai(WorkBuddy AI 国际版) / Kilo CLI / Claude Code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline / grok / mimo / kimi / copilot。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：19 读 + 10 写，而非两两直连）。
+单向归一（A→C→B：21 读 + 12 写，而非两两直连）。
 
-| A · 读取源（19 家） | C · 归一化 | B · 写入目标（10 家 + 归档） |
+| A · 读取源（21 家） | C · 归一化 | B · 写入目标（12 家 + 归档） |
 |---|---|---|
-| codex CLI · hermes · dsh · zcode · workbuddy · Claude Code · opencode · qoder · openclaw · cursor · trae · MiniMax Code · Pi Agent · Gemini CLI · Cline · grok · mimo · kimi · copilot | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · Claude Code · hermes · opencode · workbuddy · MiniMax Code · Pi Agent · Gemini CLI · Cline ＋ Markdown 归档（浏览/搜索） |
+| codex CLI · hermes · dsh · zcode · workbuddy · workbuddy-ai · Kilo CLI · Claude Code · opencode · qoder · openclaw · cursor · trae · MiniMax Code · Pi Agent · Gemini CLI · Cline · grok · mimo · kimi · copilot | IR（turns）＋ 规范库 `~/.session-sync`（pull/push 断点续推） | dsh（可续聊，幂等+增量） · codex · Claude Code · hermes · opencode · Kilo CLI · workbuddy · workbuddy-ai · MiniMax Code · Pi Agent · Gemini CLI · Cline ＋ Markdown 归档（浏览/搜索） |
 
 ## 📋 前置条件
 环境要求：Python 3.10+ 与 `zstandard`；dsh 原生后端校验需要 **Node 22+**（`nvm use 22`，

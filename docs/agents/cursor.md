@@ -19,7 +19,7 @@
 - **conversationMap 恒空壳**（19/19 实测全空）——composer 与 bubble 的关联只能靠
   `bubbleId:<cid>:` 键前缀，别信 conversationMap
 - bubble：`type` **1=user / 2=assistant**（26/408 实测文本对照）、`text`、
-  `createdAt`（ISO 字符串）、`workspaceUris: ["file:///d%3A/BI_frontend"]`（URL 编码，
+  `createdAt`（ISO 字符串）、`workspaceUris: ["file:///d%3A/my-app"]`（URL 编码，
   反解出 cwd）、`toolFormerData`（dict：`name/tool`、`params/rawArgs`、`result`、
   `toolCallId`——一个 bubble 一次调用，调用与结果同体）
 - composer 头：`createdAt` 毫秒、`isArchived`（归档位，**默认排除**，对齐

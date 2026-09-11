@@ -601,8 +601,12 @@ def _strip_wb_injection(text: str) -> str:
     return ""
 
 
-def read_workbuddy(home, include_deleted: bool = False, include_imports: bool = False) -> list[Session]:
-    """WorkBuddy → IR。消息文件可能因项目移动存在多副本：扫全 projects/ 取并集，
+def read_workbuddy(home, include_deleted: bool = False, include_imports: bool = False,
+                   source: str = "workbuddy", include_playground: bool = False) -> list[Session]:
+    """WorkBuddy → IR（home 可指国内 ~/.workbuddy 或国际 ~/.workbuddy-ai，layout 相同）。
+    include_playground=True 时把 playground（试验场/未分区视图可见）会话也纳入——
+    默认排除对齐 WorkBuddy 5.3.x UI 正式列表口径，但新版 UI 的「未分区」视图可见它们；
+    消息文件可能因项目移动存在多副本：扫全 projects/ 取并集，
     按 (type, role, timestamp) 去重后按时间排序（agentctxsync 2026-08-25 踩坑结论）。"""
     home = str(home)
     db = os.path.join(home, "workbuddy.db")
@@ -613,9 +617,9 @@ def read_workbuddy(home, include_deleted: bool = False, include_imports: bool = 
     con.row_factory = sqlite3.Row
     try:
         conds = [] if include_deleted else ["deleted_at IS NULL"]
-        # playground 会话是 WorkBuddy 的"试验场"，其 UI 正式列表不显示——
-        # 同步默认排除（对齐源侧可见集；实测 36 未删中 16 个 playground）
-        if not include_deleted:
+        if not include_deleted and not include_playground:
+            # playground 会话是 WorkBuddy 的"试验场"——其 UI 正式列表不显示，默认排除
+            #（新版 UI 的「未分区/任务」视图可见它们，include_playground=True 显式纳入）
             conds.append("is_playground = 0")
         where = ("WHERE " + " AND ".join(conds)) if conds else ""
         rows = con.execute(
@@ -733,7 +737,7 @@ def read_workbuddy(home, include_deleted: bool = False, include_imports: bool = 
         title = row["title"] or row["custom_title"] or title_from_events or ""
         sessions.append(
             Session(
-                source="workbuddy",
+                source=source,
                 source_id=sid,
                 title=str(title).strip(),
                 cwd=str(cwd),
@@ -741,6 +745,7 @@ def read_workbuddy(home, include_deleted: bool = False, include_imports: bool = 
                 updated_at=_ms(row["updated_at"]),
                 model=row["model"],
                 turns=turns,
+                is_playground=bool(row["is_playground"]) if "is_playground" in row.keys() else False,
                 source_path=primary if copies else db,
             )
         )
@@ -855,7 +860,7 @@ def read_codex(sessions_dir, include_imports: bool = False) -> list[Session]:
 
 def _codex_title(turns) -> str:
     """codex 会话标题：用户习惯把文件路径贴在首问开头当上下文，同项目多会话
-    截断后显示撞车（如 9×「D:\\BI_frontend\\src\\views\\aiagent\\ruleman…」）——
+    截断后显示撞车（如 9×「D:\\repo\\src\\views\\…」开头完全一致）——
     剥掉盘符路径前缀（含末段分隔符）取真问题；剥完为空回退原始首问截断。"""
     raw = ""
     for t in turns:
@@ -2051,7 +2056,322 @@ def read_cline(cline_home, include_imports: bool = False) -> list[Session]:
     return out
 
 
-def load_sources(which, p):
+# ── mimo（小米 MiMoCode CLI，OpenCode fork）────────────────────────────
+
+
+def _bypass_import_ids(directory) -> set[str]:
+    """agentsync 写入器的防回流旁路清单（写入器在数据根维护 .agentsync-imports.json）。"""
+    mf = os.path.join(str(directory), ".agentsync-imports.json")
+    try:
+        data = json.load(open(mf, encoding="utf-8"))
+        ids = data.get("ids") if isinstance(data, dict) else data
+        return {str(x) for x in ids or []}
+    except (OSError, ValueError):
+        return set()
+
+
+def _mimo_import_ids(db_path) -> set[str]:
+    """mimo 导入会话 id 集（默认排除，防跨源重复外流）：
+    ① external_import / claude_import 表——mimo 首跑自动导入本机 Claude Code 会话
+    （source='cc'，2026-09-09 实测 22 条），这些是 claude 源的副本，不当 mimo 外流；
+    ② .agentsync-imports.json——本工具写入器的旁路清单（未来 writer 接入时用）。"""
+    ids = _bypass_import_ids(os.path.dirname(os.path.abspath(str(db_path))))
+    con = sqlite3.connect(f"file:{str(db_path).replace(chr(92), '/')}?mode=ro", uri=True)
+    try:
+        for tbl in ("external_import", "claude_import"):
+            try:
+                ids.update(str(r[0]) for r in con.execute(f"SELECT session_id FROM {tbl}"))
+            except sqlite3.Error:
+                pass  # 无该表（版本差异）时静默
+    finally:
+        con.close()
+    return ids
+
+
+def read_mimo(mimo_home, include_imports: bool = False, include_archived: bool = False,
+              source: str = "mimo", dbname: str = "mimocode.db") -> list[Session]:
+    """mimo（MiMoCode CLI 0.1.14 实测）：数据根 ~/.local/share/mimocode，库 mimocode.db。
+    泛化：kilo CLI（opencode 服务器分支，~/.local/share/kilo/kilo.db）同族 layout，
+    read_kilo 直接复用本函数（仅 dbname/source 不同）。
+
+    schema 同构 opencode（session/message/part + data JSON 列），解析规则复用；差异：
+    - session 无 model 列（模型从 message.data.model 取）；time_archived 非空=归档，
+      默认排除（对齐 zcode/hermes/workbuddy/dsh 的归档口径）；
+    - 首跑自动导入 Claude Code 会话——external_import/claude_import 命中的一律排除；
+    - %TEMP% cwd 冒烟（mimo 自测 calculator.py + 被导入的 claude-ping 等）排除；
+    - id 形状 ses_/msg_/prt_ + nanoid（非 uuid；写入器接入时走旁路清单防环）。
+    """
+    db = os.path.join(str(mimo_home), dbname)
+    con = sqlite3.connect(f"file:{db.replace(chr(92), '/')}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    temp_prefix = os.path.normpath(tempfile.gettempdir()).lower().rstrip("\\/") + os.sep
+    try:
+        import_ids: set[str] = set()
+        if not include_imports:
+            import_ids = _mimo_import_ids(db)
+        rows = con.execute(
+            "SELECT id, directory, title, time_created, time_updated, time_archived"
+            " FROM session ORDER BY time_created"
+        ).fetchall()
+        sessions: list[Session] = []
+        for row in rows:
+            sid = str(row["id"] or "")
+            if not sid or sid in import_ids:
+                continue
+            if row["time_archived"] is not None and not include_archived:
+                continue  # UI 归档=用户已不要，不外流
+            cwd = (row["directory"] or "").strip()
+            if not cwd or os.path.normpath(cwd).lower().startswith(temp_prefix):
+                continue  # 无 cwd（挂 'global' 兜底行的 TEMP 会话）/ TEMP 冒烟
+            msg_rows = con.execute(
+                "SELECT id, time_created, data FROM message WHERE session_id=? ORDER BY time_created",
+                (sid,),
+            ).fetchall()
+            turns: list[Turn] = []
+            cur_turn: Turn | None = None
+            model: str | None = None
+            for mrow in msg_rows:
+                try:
+                    data = json.loads(mrow["data"]) if mrow["data"] else {}
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                role = data.get("role") or data.get("type") or "assistant"
+                if role in ("agent-switched", "model-switched", "compaction", "step"):
+                    continue
+                m_model = data.get("model")
+                if isinstance(m_model, dict):
+                    mid = m_model.get("modelID")
+                    if isinstance(mid, str) and mid:
+                        model = model or mid
+                elif isinstance(m_model, str) and m_model.strip():
+                    model = model or m_model.strip()
+                part_rows = con.execute(
+                    "SELECT data FROM part WHERE message_id=? ORDER BY time_created",
+                    (mrow["id"],),
+                ).fetchall()
+                if role == "user":
+                    texts = []
+                    for prow in part_rows:
+                        try:
+                            part = json.loads(prow["data"]) if prow["data"] else {}
+                        except json.JSONDecodeError:
+                            continue
+                        if part.get("type") in ("text", "input_text") and isinstance(part.get("text"), str):
+                            texts.append(part["text"])
+                    text = _claude_strip_injection("\n".join(texts)).strip()
+                    if not text:
+                        continue
+                    cur_turn = Turn(prompt=text, time=mrow["time_created"] or 0)
+                    turns.append(cur_turn)
+                    continue
+                if cur_turn is None:
+                    cur_turn = Turn(prompt="")
+                    turns.append(cur_turn)
+                step = Step(model=model)
+                for prow in part_rows:
+                    try:
+                        part = json.loads(prow["data"]) if prow["data"] else {}
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(part, dict):
+                        continue
+                    ptype = part.get("type")
+                    if ptype in ("text", "output_text") and isinstance(part.get("text"), str) and part["text"].strip():
+                        step.content.append({"type": "text", "text": part["text"]})
+                    elif ptype == "reasoning" and isinstance(part.get("text"), str) and part["text"].strip():
+                        step.content.append({"type": "reasoning", "text": part["text"]})
+                    elif ptype == "tool":
+                        tname = str(part.get("tool") or "unknown")
+                        state = part.get("state") if isinstance(part.get("state"), dict) else {}
+                        inp = state.get("input")
+                        args_text = inp if isinstance(inp, str) else json.dumps(inp if inp is not None else {}, ensure_ascii=False)
+                        call_id = str(part.get("id") or f"mm-{sid[-8:]}-{len(turns)}-{len(cur_turn.steps) + 1}")
+                        mapped = {"id": call_id, "name": tname, "arguments": args_text}
+                        step.content.append({"type": "tool-call", **mapped})
+                        step.tool_calls.append(mapped)
+                        out = state.get("output")
+                        out_text = out if isinstance(out, str) else ("" if out is None else json.dumps(out, ensure_ascii=False))
+                        step.tool_results.append(
+                            ToolResult(call_id, [{"type": "text", "text": out_text}], state.get("status") in ("failed", "error"))
+                        )
+                if step.content or step.tool_calls:
+                    cur_turn.steps.append(step)
+            turns = [tu for tu in turns if tu.steps or tu.prompt]
+            if not turns:
+                continue
+            sessions.append(
+                Session(
+                source=source,
+                    source_id=sid,
+                    title=(row["title"] or "").strip(),
+                    cwd=cwd,
+                    created_at=_ms(row["time_created"]),
+                    updated_at=_ms(row["time_updated"]),
+                    model=model,
+                    turns=turns,
+                    source_path=db,
+                )
+            )
+        return sessions
+    finally:
+        con.close()
+
+
+# ── kimi（Kimi Work：桌面版 Kimi 的 coding agent，引擎名 Kimi Code）────
+
+_KIMI_META_RE = re.compile(r"^\s*(?:<meta\b[^>]*>\s*)+")
+
+
+def _kimi_strip_meta(text: str) -> str:
+    """剥掉 kimi 注入在用户输入/标题/lastPrompt 前的 <meta awareness=… /> 前缀。"""
+    return _KIMI_META_RE.sub("", text or "").strip()
+
+
+def read_kimi(kimi_home, include_imports: bool = False) -> list[Session]:
+    """kimi（Kimi Work 实测：桌面版 Kimi 3.2.6，daimon runtime 内嵌 Kimi Code 引擎）。
+
+    数据根 = <盘>:\\KimiData\\daimon-share\\daimon\\runtime\\kimi-code\\home：
+    - session_index.jsonl：每会话一行 {sessionId, sessionDir, workDir}（入口；缺失时
+      退化扫 sessions/*/*/state.json）；
+    - sessions/<wd slug>/<sessionId>/state.json：title（含 <meta> 注入前缀，剥）、
+      createdAt/updatedAt（ISO）、custom.workspacePath；
+    - agents/main/wire.jsonl：线协议 1.4——turn.prompt=用户输入，
+      context.append_loop_event(content.part: think/text)=模型输出，
+      llm.request=模型名；config/tools/permission/usage 行跳过；
+      context.append_message(role=assistant) 仅在无 loop 事件时兜底；
+    - ctitle-* = 标题生成副作用会话，排除；agents 只读 main（子代理 wire 不混入）。
+    """
+    home = str(kimi_home)
+    import_ids: set[str] = set() if include_imports else _bypass_import_ids(home)
+    entries: list[tuple[str, str, str]] = []  # (sessionId, sessionDir, workDir)
+    idx = os.path.join(home, "session_index.jsonl")
+    if os.path.isfile(idx):
+        for obj in _parse_jsonl(open(idx, encoding="utf-8", errors="replace").read()):
+            sid = str(obj.get("sessionId") or "")
+            sdir = str(obj.get("sessionDir") or "")
+            if sid and os.path.isdir(sdir):
+                entries.append((sid, sdir, str(obj.get("workDir") or "")))
+    else:
+        for sp in glob.glob(os.path.join(home, "sessions", "*", "*", "state.json")):
+            sdir = os.path.dirname(sp)
+            entries.append((os.path.basename(sdir), sdir, ""))
+    out: list[Session] = []
+    for sid, sdir, wdir in entries:
+        if sid.startswith("ctitle-") or sid in import_ids:
+            continue  # 标题生成副作用会话 / 本工具导入不回流
+        state: dict = {}
+        try:
+            loaded = json.load(open(os.path.join(sdir, "state.json"), encoding="utf-8"))
+            if isinstance(loaded, dict):
+                state = loaded
+        except (OSError, ValueError):
+            pass
+        wire = os.path.join(sdir, "agents", "main", "wire.jsonl")
+        if not os.path.isfile(wire):
+            continue
+        turns: list[Turn] = []
+        cur: Turn | None = None
+        steps: dict[str, Step] = {}
+        step_order: list[str] = []
+        model: str | None = None
+        saw_loop_parts = False
+
+        def _flush_step_order():
+            if cur is not None:
+                for key in step_order:
+                    if steps[key].content:
+                        cur.steps.append(steps[key])
+
+        for obj in _parse_jsonl(open(wire, encoding="utf-8", errors="replace").read()):
+            t = obj.get("type")
+            if t == "turn.prompt":
+                _flush_step_order()
+                blocks = obj.get("input") if isinstance(obj.get("input"), list) else []
+                text = _kimi_strip_meta("\n".join(
+                    str(b.get("text") or "") for b in blocks
+                    if isinstance(b, dict) and b.get("type") == "text"))
+                cur = Turn(prompt=text, time=_ms(obj.get("time")))
+                turns.append(cur)
+                steps, step_order = {}, []
+                saw_loop_parts = False
+            elif t == "llm.request":
+                m = obj.get("model")
+                if isinstance(m, str) and m:
+                    model = model or m
+            elif t == "context.append_loop_event":
+                ev = obj.get("event") if isinstance(obj.get("event"), dict) else {}
+                if ev.get("type") != "content.part":
+                    continue
+                if cur is None:
+                    cur = Turn(prompt="", time=_ms(obj.get("time")))
+                    turns.append(cur)
+                key = str(ev.get("stepUuid") or ev.get("step") or "s")
+                if key not in steps:
+                    steps[key] = Step(model=model)
+                    step_order.append(key)
+                part = ev.get("part") if isinstance(ev.get("part"), dict) else {}
+                ptype = part.get("type")
+                if ptype == "think" and isinstance(part.get("think"), str) and part["think"].strip():
+                    steps[key].content.append({"type": "reasoning", "text": part["think"]})
+                    saw_loop_parts = True
+                elif ptype == "text" and isinstance(part.get("text"), str) and part["text"].strip():
+                    steps[key].content.append({"type": "text", "text": part["text"]})
+                    saw_loop_parts = True
+                elif ptype:
+                    # 未知 part（工具调用等形态未采样）以原始 JSON 保底，模型可读（同 codex 口径）
+                    steps[key].content.append({"type": "text", "text": json.dumps(part, ensure_ascii=False)})
+                    saw_loop_parts = True
+            elif t == "context.append_message":
+                # 兜底：模型侧无 loop 事件时用 append 的 assistant 消息（user 已由 turn.prompt 覆盖）
+                msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+                if msg.get("role") != "assistant" or saw_loop_parts or cur is None:
+                    continue
+                step = Step(model=model)
+                for b in msg.get("content") or []:
+                    if not isinstance(b, dict):
+                        continue
+                    if b.get("type") == "text" and isinstance(b.get("text"), str) and b["text"].strip():
+                        step.content.append({"type": "text", "text": b["text"]})
+                    elif b.get("type") == "think" and isinstance(b.get("think"), str) and b["think"].strip():
+                        step.content.append({"type": "reasoning", "text": b["think"]})
+                if step.content:
+                    cur.steps.append(step)
+        _flush_step_order()
+        turns = [tu for tu in turns if tu.steps or tu.prompt]
+        if not turns:
+            continue
+        custom = state.get("custom") if isinstance(state.get("custom"), dict) else {}
+        cwd = str(custom.get("workspacePath") or wdir or "") or None
+        created = _ms(state.get("createdAt")) or turns[0].time
+        updated = _ms(state.get("updatedAt")) or max((tu.time for tu in turns if tu.time), default=created)
+        out.append(
+            Session(
+                source="kimi",
+                source_id=sid,
+                title=_kimi_strip_meta(str(state.get("title") or "")),
+                cwd=cwd,
+                created_at=created,
+                updated_at=updated,
+                model=model,
+                turns=turns,
+                source_path=os.path.join(sdir, "state.json"),
+            )
+        )
+    return out
+
+
+def read_kilo(kilo_home, include_imports: bool = False, include_archived: bool = False) -> list[Session]:
+    """kilo CLI（opencode 服务器分支，本机 7.6.2 实测）：~/.local/share/kilo，库 kilo.db。
+
+    schema 与 mimo 同构（session/message/part + ses_/msg_/prt_ nanoid），复用 read_mimo；
+    2026-09-11 接入，探针=Bilalm 前端「问候与交流”（bailian-token-plan/qwen3.6-flash）。"""
+    return read_mimo(kilo_home, include_imports=include_imports,
+                     include_archived=include_archived, source="kilo", dbname="kilo.db")
+
+
+def load_sources(which, p, include_playground: bool = False):
     """统一 fan-out：{source: [Session]}（存储缺失的源跳过）。"""
     loaded: dict[str, list[Session]] = {}
     if "zcode" in which and p.zcode_db:
@@ -2063,7 +2383,10 @@ def load_sources(which, p):
     if "codex" in which and p.codex_sessions:
         loaded["codex"] = read_codex(p.codex_sessions)
     if "workbuddy" in which and p.workbuddy_home:
-        loaded["workbuddy"] = read_workbuddy(p.workbuddy_home)
+        loaded["workbuddy"] = read_workbuddy(p.workbuddy_home, include_playground=include_playground)
+    if "workbuddy-ai" in which and p.workbuddy_ai_home:
+        loaded["workbuddy-ai"] = read_workbuddy(p.workbuddy_ai_home, source="workbuddy-ai",
+                                                include_playground=include_playground)
     if "claude" in which and p.claude_projects:
         loaded["claude"] = read_claude(p.claude_projects)
     if "opencode" in which and p.opencode_db:
@@ -2084,4 +2407,10 @@ def load_sources(which, p):
         loaded["gemini"] = read_gemini(p.gemini_home)
     if "cline" in which and p.cline_home:
         loaded["cline"] = read_cline(p.cline_home)
+    if "mimo" in which and p.mimo_home:
+        loaded["mimo"] = read_mimo(p.mimo_home)
+    if "kilo" in which and p.kilo_db:
+        loaded["kilo"] = read_kilo(os.path.dirname(str(p.kilo_db)))
+    if "kimi" in which and p.kimi_home:
+        loaded["kimi"] = read_kimi(p.kimi_home)
     return loaded

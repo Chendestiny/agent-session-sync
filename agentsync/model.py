@@ -101,6 +101,7 @@ class Session:
     turns: list[Turn] = field(default_factory=list)
     source_path: str | None = None
     subagent: bool = False          # 子代理会话（dsh origin=subagent；同步默认排除，对齐 zcode/codex）
+    is_playground: bool = False     # workbuddy 系：试验场/未分区任务标志（目标端「任务栏」视图判别，写入器自动归位）
 
     @property
     def message_count(self) -> int:

@@ -1,6 +1,6 @@
 # Pi Agent 会话结构详解
 
-核实基线：源码（D:\Project_github\pi-main，@earendil-works/pi-coding-agent 0.84）+
+核实基线：源码（@earendil-works/pi-coding-agent 0.84 开源仓库）+
 本机源码构建实跑（2026-09-03，`./pi-test.sh -p` 三条会话）；读取器
 `agentsync.readers.read_pi`（第 13 家读取源）。Pi 是 minimax 的 pi-agent
 运行时同源项目，但存储各自独立（~/.pi 与 ~/.minimax 互不相干）。

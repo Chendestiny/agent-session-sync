@@ -4,13 +4,13 @@ description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent
 version: 1.0.0
 display_name: Session Sync 跨会话同步
 display_name_en: Agent Session Sync
-description_zh: 跨 Agent 会话同步工具包：把 codex / Claude Code / openclaw / cursor / trae / Gemini CLI / dsh / zcode / workbuddy / MiniMax Code 等 15+ 家 AI agent 的历史会话，归一导入 dsh 继续对话，并可导出统一 Markdown 归档。A→C→B 架构（读取源 → 规范库 → 写入目标），支持 10 家写入；幂等、增量、人在回路确认，自带只读可视化 dashboard。安装后对任意 agent 说一句"同步会话"即可触发。
+description_zh: 跨 Agent 会话同步工具包：把 codex / Claude Code / openclaw / cursor / trae / Gemini CLI / dsh / zcode / workbuddy / workbuddy-ai / kilo / MiniMax Code 等 15+ 家 AI agent 的历史会话，归一导入 dsh 继续对话，并可导出统一 Markdown 归档。A→C→B 架构（读取源 → 规范库 → 写入目标），支持 12 家写入；幂等、增量、人在回路确认，自带只读可视化 dashboard。安装后对任意 agent 说一句"同步会话"即可触发。
 description_en: Cross-agent session sync — read chat history from 15+ AI coding agents (codex, Claude Code, openclaw, cursor, trae, Gemini CLI and more), import into dsh to continue conversations, plus Markdown archive export.
 ---
 
 # 跨 Agent 会话同步（session-sync）
 
-本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / claude / opencode / qoder / openclaw / cursor / trae / minimax / mimo / kimi / pi / gemini / cline 十七家会话（grok/copilot 占位待核验），
+本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / workbuddy-ai / kilo / claude / opencode / qoder / openclaw / cursor / trae / minimax / mimo / kimi / pi / gemini / cline 十九家会话（grok/copilot 占位待核验），
 写入 dsh（可续聊），并支持 Markdown 归档。
 **详细操作手册见同目录 `AGENTS.md`**（cookbook、安全铁律、故障排查、格式文档地图），
 格式深度规格见 `docs/FORMATS.md`。以下是要点。
@@ -67,7 +67,8 @@ python sync.py to-codex --source all --scope inc --apply   # 反向写入 codex�
 python sync.py to-claude --source all --scope inc --apply  # 反向写入 claude code
 python sync.py to-hermes --source all --scope inc --apply  # 反向写入 hermes
 python sync.py to-opencode --source all --scope inc --apply   # 反向写入 opencode（桌面/CLI 共库）
-python sync.py to-workbuddy --source all --scope inc --apply  # 反向写入 workbuddy（db+jsonl 双写）
+python sync.py to-workbuddy --source all --scope inc --apply  # 反向写入 workbuddy（db+jsonl 双写；国内版）
+python sync.py to-workbuddy-ai --source all --scope inc --apply # 反向写入 workbuddy-ai（WorkBuddy AI 国际版）
 python sync.py to-minimax --source all --scope inc --apply    # 反向写入 MiniMax Code（须先退出应用）
 python sync.py to-pi --source all --scope inc --apply          # 反向写入 Pi Agent
 python sync.py to-gemini --source all --scope inc --apply      # 反向写入 Gemini CLI

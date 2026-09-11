@@ -17,7 +17,8 @@ class StorePaths:
     dsh_sessions: Path | None = None   # $DSH_HOME/sessions（~/.dsh/sessions）
     hermes_db: Path | None = None      # $HERMES_HOME/state.db（Windows %LOCALAPPDATA%/hermes）
     codex_sessions: Path | None = None  # ~/.codex/sessions
-    workbuddy_home: Path | None = None  # ~/.workbuddy-ai 或 ~/.workbuddy
+    workbuddy_home: Path | None = None  # ~/.workbuddy（国内版）
+    workbuddy_ai_home: Path | None = None  # ~/.workbuddy-ai（国际版，D:\workbuddyai 安装）
     claude_projects: Path | None = None  # ~/.claude/projects/<cwd转义>/<sessionId>.jsonl
     opencode_db: Path | None = None    # %LOCALAPPDATA%/opencode/opencode.db（回退 ~/.local/share）
     qoder_home: Path | None = None     # ~/.qoder（正文 cache/projects/*/conversation-history）
@@ -25,8 +26,9 @@ class StorePaths:
     openclaw_home: Path | None = None  # ~/.openclaw（agents/main/sessions/<uuid>.jsonl）
     cursor_global_db: Path | None = None  # %APPDATA%/Cursor/User/globalStorage/state.vscdb（cursorDiskKV）
     trae_global_db: Path | None = None    # %APPDATA%/Trae/User/globalStorage/state.vscdb（同 VS Code 系布局）
-    mimo_home: Path | None = None         # %LOCALAPPDATA%/mimocode 或 ~/.local/share/mimocode（OpenCode fork，待实机核验）
-    kimi_home: Path | None = None         # ~/.kimi-code（Kimi Code CLI，minidb 自有格式待核）
+    mimo_home: Path | None = None         # ~/.local/share/mimocode（MiMoCode CLI 实测；库=mimo_home/mimocode.db）
+    kilo_db: Path | None = None           # ~/.local/share/kilo/kilo.db（Kilo CLI，opencode 分支，7.6.2 实测）
+    kimi_home: Path | None = None         # <盘>:\KimiData\daimon-share\daimon\runtime\kimi-code\home（Kimi Work 实测）
     minimax_home: Path | None = None      # ~/.minimax（v2/sqlite/runtime-state.sqlite 注册表+消息行）
     grok_home: Path | None = None         # ~/.grok（Grok Build：sessions/<cwd编码>/<uuid7>/ JSONL 三层，仓库已核）
     copilot_home: Path | None = None      # %APPDATA%/Code/User（GitHub Copilot=VS Code 本体 chatSessions，待核验）
@@ -59,10 +61,12 @@ def detect() -> StorePaths:
     cs = home() / ".codex" / "sessions"
     s.codex_sessions = cs if cs.is_dir() else None
 
-    for wb in (home() / ".workbuddy-ai", home() / ".workbuddy"):  # 5.3.x 优先 -ai
-        if wb.is_dir() and (wb / "workbuddy.db").exists():
-            s.workbuddy_home = wb
-            break
+    # 国内版与国际版是两个独立的数据目录，各自探测、互不占位：
+    # ~/.workbuddy → workbuddy（国内）；~/.workbuddy-ai → workbuddy-ai（国际）
+    if (home() / ".workbuddy" / "workbuddy.db").exists():
+        s.workbuddy_home = home() / ".workbuddy"
+    if (home() / ".workbuddy-ai" / "workbuddy.db").exists():
+        s.workbuddy_ai_home = home() / ".workbuddy-ai"
 
     cp = home() / ".claude" / "projects"
     s.claude_projects = cp if cp.is_dir() else None
@@ -119,27 +123,40 @@ def detect() -> StorePaths:
     if (mm / "v2" / "sqlite" / "runtime-state.sqlite").is_file():
         s.minimax_home = mm
 
-    # mimo（小米 MiMo-Code，OpenCode fork；仓库 packages/shared/src/global.ts 已核验）：
-    # MIMOCODE_HOME=<root>（data 在 <root>/data）或 XDG 数据目录（Win=%LOCALAPPDATA%\mimocode）。
-    # 库名 mimocode.db（storage/db.ts），schema 同构 opencode 的 session/message/part。
+    # mimo（小米 MiMoCode CLI，2026-09-09 实机核验 0.1.14）：XDG 四分区在 Windows
+    # 字面生效——库在 ~/.local/share/mimocode/mimocode.db（%LOCALAPPDATA%\mimocode
+    # 实测不存在，保留作候选）；MIMOCODE_HOME=<root> 时库在 <root>\data。
+    # 注意 ~/.mimocode 是二进制安装目录（bin/mimo.exe），不是数据目录。
     for mc in (
         Path(os.environ["MIMOCODE_HOME"]) / "data" if os.environ.get("MIMOCODE_HOME") else None,
         Path(os.environ.get("XDG_DATA_HOME") or "") / "mimocode" if os.environ.get("XDG_DATA_HOME") else None,
         Path(os.environ.get("LOCALAPPDATA") or "") / "mimocode" if os.environ.get("LOCALAPPDATA") else None,
         home() / ".local" / "share" / "mimocode",
     ):
-        if mc and mc.is_dir():
+        if mc and (mc / "mimocode.db").is_file():
             s.mimo_home = mc
             break
 
-    # kimi（Kimi Code CLI，仓库 apps/kimi-code/src/constant/app.ts 已核验）：
-    # 数据目录 = $KIMI_CODE_HOME 或 ~/.kimi-code（注意不是 ~/.kimi）；会话在其自研
-    # minidb 里（packages/minidb，非 sqlite），格式细节待实装后核验
-    for kc in (
+    # kilo（Kilo CLI，opencode 分支）：数据在 ~/.local/share/kilo，库 kilo.db（三表同构）
+    if (home() / ".local" / "share" / "kilo" / "kilo.db").is_file():
+        s.kilo_db = home() / ".local" / "share" / "kilo" / "kilo.db"
+
+    # kimi（Kimi Work，2026-09-09 实机核验：桌面版 Kimi 3.2.6 的 coding agent，
+    # daimon runtime（OpenClaw 族）内嵌 Kimi Code 引擎）：引擎 HOME 在
+    # <盘>:\KimiData\daimon-share\daimon\runtime\kimi-code\home，下有
+    # session_index.jsonl + sessions\<wd slug>\<conv-id>\。~/.kimi-code 为独立
+    # npm CLI 形态（本机未装，minidb 布局），留作前瞻候选。
+    kc_cands: list[Path | None] = [
         Path(os.environ["KIMI_CODE_HOME"]) if os.environ.get("KIMI_CODE_HOME") else None,
-        home() / ".kimi-code",
-    ):
-        if kc and kc.is_dir():
+    ]
+    for _drv in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        _root = Path(f"{_drv}:\\")
+        if _root.is_dir():
+            kc_cands.append(_root / "KimiData" / "daimon-share" / "daimon"
+                            / "runtime" / "kimi-code" / "home")
+    kc_cands.append(home() / ".kimi-code")
+    for kc in kc_cands:
+        if kc and ((kc / "session_index.jsonl").is_file() or (kc / "sessions").is_dir()):
             s.kimi_home = kc
             break
 
@@ -227,6 +244,7 @@ def bind_override(source: str, raw: str, save: bool = True) -> dict:
         "hermes": ("hermes_db", True, ["state.db"], None, False),
         "codex": ("codex_sessions", False, ["sessions"], lambda d: d.name == "sessions", False),
         "workbuddy": ("workbuddy_home", False, ["."], lambda d: (d / "workbuddy.db").exists(), True),
+        "workbuddy-ai": ("workbuddy_ai_home", False, ["."], lambda d: (d / "workbuddy.db").exists(), True),
         "claude": ("claude_projects", False, ["projects"], lambda d: d.name == "projects", False),
         "opencode": ("opencode_db", True, ["opencode.db"], None, False),
         "qoder": ("qoder_home", False, ["cache/projects"], lambda d: (d / "cache" / "projects").is_dir(), True),
@@ -237,8 +255,10 @@ def bind_override(source: str, raw: str, save: bool = True) -> dict:
                  ["User/globalStorage/state.vscdb", "globalStorage/state.vscdb", "state.vscdb"], None, False),
         "minimax": ("minimax_home", False, ["v2/sqlite/runtime-state.sqlite"],
                     lambda d: (d / "v2" / "sqlite" / "runtime-state.sqlite").is_file(), True),
-        "mimo": ("mimo_home", False, ["."], lambda d: d.is_dir(), True),
-        "kimi": ("kimi_home", False, ["."], lambda d: d.is_dir(), True),
+        "mimo": ("mimo_home", False, ["."], lambda d: (d / "mimocode.db").is_file(), True),
+        "kilo": ("kilo_db", True, ["local/share/kilo/kilo.db", "kilo/kilo.db", "kilo.db"], None, False),
+        "kimi": ("kimi_home", False, ["."],
+                 lambda d: (d / "session_index.jsonl").is_file() or (d / "sessions").is_dir(), True),
         "grok": ("grok_home", False, ["sessions"], lambda d: d.name == ".grok" or (d / "sessions").is_dir(), True),
         "copilot": ("copilot_home", False, ["."], lambda d: d.is_dir(), True),
         "gemini": ("gemini_home", False, ["."], lambda d: d.is_dir(), True),

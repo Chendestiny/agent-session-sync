@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from agentsync import archive as archive_mod
 from agentsync import confirm, dshwrite, paths, readers, syncstate
 
-ALL_SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "claude", "opencode", "qoder", "openclaw",
+ALL_SOURCES = ["zcode", "hermes", "dsh", "codex", "workbuddy", "workbuddy-ai", "kilo", "claude", "opencode", "qoder", "openclaw",
                "cursor", "trae", "mimo", "kimi", "minimax", "grok", "copilot", "gemini", "cline", "pi"]
 
 
@@ -42,8 +42,8 @@ def _fmt_ts(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000).strftime("%m-%d %H:%M")
 
 
-def load_sources(which: list[str], p: paths.StorePaths):
-    return readers.load_sources(which, p)
+def load_sources(which: list[str], p: paths.StorePaths, include_playground: bool = False):
+    return readers.load_sources(which, p, include_playground=include_playground)
 
 
 def _filter(sessions: list, args) -> list:
@@ -117,7 +117,8 @@ def cmd_status(args):
     print(f"  hermes db      : {p.hermes_db or '未找到'}")
     print(f"  dsh sessions   : {p.dsh_sessions or '未找到'}")
     print(f"  codex sessions : {p.codex_sessions or '未找到'}")
-    print(f"  workbuddy home : {p.workbuddy_home or '未找到'}")
+    print(f"  workbuddy home : {p.workbuddy_home or '未找到'}（国内版）")
+    print(f"  workbuddy-ai   : {p.workbuddy_ai_home or '未找到'}（国际版）")
     print(f"  claude projects: {p.claude_projects or '未找到'}")
     print(f"  opencode db    : {p.opencode_db or '未找到'}")
     print(f"  qoder home     : {p.qoder_home or '未找到'}")
@@ -125,6 +126,7 @@ def cmd_status(args):
     print(f"  cursor db      : {p.cursor_global_db or '未找到'}")
     print(f"  trae db        : {p.trae_global_db or '未找到'}")
     print(f"  mimo home      : {p.mimo_home or '未找到'}")
+    print(f"  kilo db        : {p.kilo_db or '未找到'}")
     print(f"  kimi home      : {p.kimi_home or '未找到'}")
     print(f"  minimax home   : {p.minimax_home or '未找到'}")
     print(f"  grok home      : {p.grok_home or '未找到'}")
@@ -215,7 +217,7 @@ def _run_sink(args, name: str, get_store, writer, loader=None, state_dir=None, s
     if tfile:
         titles = json.load(open(tfile, encoding="utf-8"))
         print(f"标题覆盖：{len(titles)} 条（来自 {tfile}）")
-    loaded = (loader or load_sources)(which, p)
+    loaded = (loader or load_sources)(which, p, include_playground=getattr(args, "include_playground", False))
     # 数据量确认 → 每源增量下界（None = 不过滤：全部历史 / 首次增量）
     state = syncstate.load(s_root, fname)
     # 人工拦截：历史全量（scope=all，或 inc 首跑无基准）在 --apply 时必须显式确认——
@@ -346,7 +348,8 @@ def cmd_push(args):
     if not store.store_exists():
         sys.exit("规范库 C 为空：先跑 python sync.py pull")
     writers = {"dsh": dshwrite, "codex": codexwrite, "claude": claudewrite, "hermes": hermeswrite,
-               "opencode": opencodewrite, "workbuddy": workbuddywrite, "minimax": minimaxwrite,
+               "opencode": opencodewrite, "kilo": opencodewrite, "workbuddy": workbuddywrite, "minimax": minimaxwrite,
+               "workbuddy-ai": workbuddywrite,
                "pi": piwrite, "gemini": geminiwrite, "cline": clinewrite}
     getters = {
         "dsh": lambda p: p.dsh_sessions,
@@ -354,7 +357,9 @@ def cmd_push(args):
         "claude": lambda p: p.claude_projects,
         "hermes": lambda p: p.hermes_db,
         "opencode": lambda p: p.opencode_db,
+        "kilo": lambda p: p.kilo_db,
         "workbuddy": lambda p: p.workbuddy_home,
+        "workbuddy-ai": lambda p: p.workbuddy_ai_home,
         "minimax": lambda p: p.minimax_home,
         "pi": lambda p: p.pi_home,
         "gemini": lambda p: p.gemini_home,
@@ -400,10 +405,23 @@ def cmd_to_opencode(args):
     _run_sink(args, "opencode", lambda p: p.opencode_db, _w)
 
 
+def cmd_to_kilo(args):
+    # kilo 是 opencode 服务器分支，三表同构——写入直接复用 opencodewrite（db 同目录墓碑/旁路清单同款）
+    from agentsync import opencodewrite as _w
+
+    _run_sink(args, "kilo", lambda p: p.kilo_db, _w)
+
+
 def cmd_to_workbuddy(args):
     from agentsync import workbuddywrite as _w
 
     _run_sink(args, "workbuddy", lambda p: p.workbuddy_home, _w)
+
+
+def cmd_to_workbuddy_ai(args):
+    from agentsync import workbuddywrite as _w
+
+    _run_sink(args, "workbuddy-ai", lambda p: p.workbuddy_ai_home, _w)
 
 
 def cmd_to_minimax(args):
@@ -730,6 +748,104 @@ def cmd_selftest(args):
     check(oc[0].updated_at == 1787000009000 and oc[0].cwd == "D:/oc" and oc[0].model == "gpt-test",
           "opencode：updated_at / cwd / model")
 
+    # mimo：同构 opencode + 首跑自动导入 claude 会话（external_import 表）+ TEMP/归档排除
+    from agentsync.readers import read_mimo
+
+    mm_home = os.path.join(box, "mimo-home")
+    os.makedirs(mm_home)
+    mm_db = os.path.join(mm_home, "mimocode.db")
+    con = sqlite3.connect(mm_db)
+    con.executescript(
+        "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, title TEXT, time_created INTEGER,"
+        " time_updated INTEGER, time_archived INTEGER);"
+        "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);"
+        "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);"
+        "CREATE TABLE external_import (source TEXT, source_key TEXT, session_id TEXT,"
+        " source_path TEXT, source_mtime INTEGER, time_imported INTEGER, message_ids TEXT);"
+    )
+    con.execute("INSERT INTO session VALUES ('ses_mmnative', 'D:/mm', 'MM 测试', 1787000100000, 1787000109000, NULL)")
+    con.execute("INSERT INTO message VALUES ('msg_mu1', 'ses_mmnative', 1787000101000, '{\"role\":\"user\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_mu1', 'msg_mu1', 'ses_mmnative', 1787000101000, '{\"type\":\"text\",\"text\":\"你好 mimo\"}')")
+    con.execute("INSERT INTO message VALUES ('msg_ma1', 'ses_mmnative', 1787000102000, '{\"role\":\"assistant\",\"model\":\"mimo-test\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_mr1', 'msg_ma1', 'ses_mmnative', 1787000102000, '{\"type\":\"reasoning\",\"text\":\"想想\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_mt1', 'msg_ma1', 'ses_mmnative', 1787000102100, '{\"type\":\"text\",\"text\":\"收到\"}')")
+    # 首跑自动导入的 claude 会话（external_import 登记）——必须排除
+    con.execute("INSERT INTO session VALUES ('ses_mmimport', 'D:/cc', '导入副本', 1787000000000, 1787000005000, NULL)")
+    con.execute("INSERT INTO message VALUES ('msg_mi1', 'ses_mmimport', 1787000001000, '{\"role\":\"user\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_mi1', 'msg_mi1', 'ses_mmimport', 1787000001000, '{\"type\":\"text\",\"text\":\"claude 原话\"}')")
+    con.execute("INSERT INTO external_import VALUES ('cc', 'k1', 'ses_mmimport', 'x.jsonl', 0, 0, NULL)")
+    # TEMP 冒烟（mimo 自测 calculator 类）——排除
+    con.execute("INSERT INTO session VALUES ('ses_mmtemp', ?, '冒烟', 1787000200000, 1787000200000, NULL)",
+                (os.path.join(tempfile.gettempdir(), "mm-smoke").replace("\\", "/"),))
+    # 归档会话——默认排除
+    con.execute("INSERT INTO session VALUES ('ses_mmarch', 'D:/mm', '归档的', 1787000300000, 1787000300000, 1787000301000)")
+    con.execute("INSERT INTO message VALUES ('msg_mah', 'ses_mmarch', 1787000300000, '{\"role\":\"user\"}')")
+    con.execute("INSERT INTO part VALUES ('prt_mah', 'msg_mah', 'ses_mmarch', 1787000300000, '{\"type\":\"text\",\"text\":\"归档前的话\"}')")
+    con.commit()
+    con.close()
+    mm = read_mimo(mm_home)
+    check(len(mm) == 1 and mm[0].source_id == "ses_mmnative",
+          "mimo：仅原生 1 会话（claude 自动导入/TEMP/归档全排除）")
+    check(mm[0].turns[0].prompt == "你好 mimo" and mm[0].model == "mimo-test"
+          and any(b["type"] == "reasoning" for b in mm[0].turns[0].steps[0].content),
+          "mimo：轮次 + reasoning + 模型名（message.data.model，session 无 model 列）")
+    check(read_mimo(mm_home, include_archived=True)[0].source_id == "ses_mmnative"
+          and len(read_mimo(mm_home, include_archived=True)) == 2,
+          "mimo：include_archived 收归档会话（展示口径）")
+
+    # kimi：Kimi Work wire.jsonl 协议（turn.prompt / content.part think+text / llm.request）
+    from agentsync.readers import read_kimi
+
+    kw_home = os.path.join(box, "kimi-home")
+    kw_sess = os.path.join(kw_home, "sessions", "wd_test_ab12", "conv-kwtest0001")
+    os.makedirs(os.path.join(kw_sess, "agents", "main"))
+    with open(os.path.join(kw_home, "session_index.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "conv-kwtest0001", "sessionDir": kw_sess.replace("\\", "/"),
+                            "workDir": "D:/kw"}, ensure_ascii=False) + "\n")
+        f.write(json.dumps({"sessionId": "ctitle-9999", "sessionDir": "x", "workDir": "D:/kw"},
+                           ensure_ascii=False) + "\n")
+    with open(os.path.join(kw_sess, "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"title": '<meta awareness="low" timestamp="2026-09-09 14:19" /> 你是kimi吗？',
+                   "createdAt": "2026-09-09T06:19:00.666Z", "updatedAt": "2026-09-09T06:19:11.326Z",
+                   "custom": {"workspacePath": "D:\\kw"}}, f, ensure_ascii=False)
+    kw_lines = [
+        {"type": "metadata", "protocol_version": "1.4", "created_at": 1788934740884},
+        {"type": "config.update", "profileName": "agent", "systemPrompt": "You are Kimi Code CLI..."},
+        {"type": "turn.prompt", "input": [{"type": "text",
+                                          "text": '<meta awareness="low" timestamp="2026-09-09 14:19" />\n你是kimi吗？'}],
+         "origin": {"kind": "user"}, "time": 1788934741357},
+        {"type": "llm.request", "kind": "loop", "provider": "kimi", "model": "k2d6-agent",
+         "maxTokens": 262144, "time": 1788934741364},
+        {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "u-step1",
+                                                        "turnId": "0", "step": 1}, "time": 1788934741362},
+        {"type": "context.append_loop_event", "event": {"type": "content.part", "uuid": "u-p1",
+                                                        "turnId": "0", "step": 1, "stepUuid": "u-step1",
+                                                        "part": {"type": "think", "think": "用户问身份，回答 Kimi"}},
+         "time": 1788934751359},
+        {"type": "context.append_loop_event", "event": {"type": "content.part", "uuid": "u-p2",
+                                                        "turnId": "0", "step": 1, "stepUuid": "u-step1",
+                                                        "part": {"type": "text", "text": "是的，我是 Kimi。"}},
+         "time": 1788934751360},
+        {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "u-step1",
+                                                        "turnId": "0", "step": 1, "usage": {"output": 189},
+                                                        "finishReason": "end_turn"}, "time": 1788934751359},
+        {"type": "usage.record", "model": "k2d6-agent", "usage": {"output": 189},
+         "usageScope": "turn", "time": 1788934751359},
+    ]
+    with open(os.path.join(kw_sess, "agents", "main", "wire.jsonl"), "w", encoding="utf-8") as f:
+        for r in kw_lines:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    kw = read_kimi(kw_home)
+    check(len(kw) == 1 and kw[0].source_id == "conv-kwtest0001", "kimi：读回 1 会话（ctitle-* 副作用会话排除）")
+    check(kw[0].title == "你是kimi吗？" and kw[0].turns[0].prompt == "你是kimi吗？",
+          "kimi：标题/prompt 的 <meta> 注入前缀已剥")
+    check(kw[0].model == "k2d6-agent" and kw[0].cwd == "D:\\kw" and kw[0].created_at == 1788934740666,
+          "kimi：模型（llm.request）/ cwd（workspacePath）/ ISO→ms 时间")
+    _st_k = kw[0].turns[0].steps[0]
+    check(any(b["type"] == "reasoning" and b["text"] == "用户问身份，回答 Kimi" for b in _st_k.content)
+          and any(b["type"] == "text" and b["text"] == "是的，我是 Kimi。" for b in _st_k.content),
+          "kimi：content.part think→reasoning + text 归并同 step，config/usage 行跳过")
+
     # qoder：索引（vscdb questTaskListSnapshot）+ 正文（cache/projects conversation-history）两跳
     from agentsync.readers import read_qoder
     qh = os.path.join(box, "qoder-home")
@@ -886,7 +1002,7 @@ def cmd_selftest(args):
         _comp("cur-0001", 1765365437235),
         _comp("cur-arch", 1765365437000, archived=True),
         _bub("cur-0001", "b1", 1, "@src/views/index.vue 提取公共函数", "2025-12-10T11:48:20.000Z",
-             ws="file:///d%3A/BI_frontend"),
+             ws="file:///d%3A/my-app"),
         _bub("cur-0001", "b2", 2, "我来分析该文件", "2025-12-10T11:48:22.000Z",
              tool={"name": "read_file", "toolCallId": "tc1", "params": {"path": "a.vue"}, "result": "文件内容"}),
         _bub("cur-0001", "b3", 2, "提取完成", "2025-12-10T11:48:24.000Z"),
@@ -894,7 +1010,7 @@ def cmd_selftest(args):
     ])
     cs = read_cursor(cur_db)
     check(len(cs) == 1 and cs[0].source_id == "cur-0001", "cursor：读回 1 会话（isArchived 默认排除）")
-    check(cs[0].title == "提取公共函数" and cs[0].cwd == "d:/BI_frontend",
+    check(cs[0].title == "提取公共函数" and cs[0].cwd == "d:/my-app",
           "cursor：@路径标题剥离 + workspaceUris 反解 cwd")
     st_c = cs[0].turns[0].steps[0]
     check(st_c.tool_calls[0]["name"] == "read_file" and st_c.tool_results[0].content[0]["text"] == "文件内容"
@@ -1764,14 +1880,16 @@ def main():
         ("to-claude", cmd_to_claude, "覆盖 claude projects 根目录"),
         ("to-hermes", cmd_to_hermes, "覆盖 hermes state.db 路径"),
         ("to-opencode", cmd_to_opencode, "覆盖 opencode opencode.db 路径"),
+        ("to-kilo", cmd_to_kilo, "覆盖 kilo kilo.db 路径"),
         ("to-workbuddy", cmd_to_workbuddy, "覆盖 workbuddy home 目录"),
+        ("to-workbuddy-ai", cmd_to_workbuddy_ai, "覆盖 workbuddy-ai（国际版）home 目录"),
         ("to-minimax", cmd_to_minimax, "覆盖 minimax home 目录"),
         ("to-pi", cmd_to_pi, "覆盖 pi home 目录"),
         ("to-gemini", cmd_to_gemini, "覆盖 gemini home 目录"),
         ("to-cline", cmd_to_cline, "覆盖 cline 扩展存储目录"),
     ):
         s = sub.add_parser(sink, help=f"导入到 {sink[3:]}（可续聊）")
-        s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode[,dsh]；交互缺省时弹菜单")
+        s.add_argument("--source", default="", help="来源区（确认1/2）：all 或逗号组合 zcode,hermes,codex,workbuddy,claude,opencode,mimo,kimi,…[,dsh]；交互缺省时弹菜单")
         s.add_argument("--scope", default="", help="数据量（确认2/2）：inc(仅增量,默认)|7d|30d|任意N天|all(全部历史,需二次确认)；交互缺省时弹菜单")
         s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
         s.add_argument("--confirm-batch", action="store_true", help="大批量（>15 条）的人工放行 token：非交互必给，交互则弹勾选清单")
@@ -1792,7 +1910,7 @@ def main():
     s.set_defaults(fn=cmd_pull)
 
     s = sub.add_parser("push", help="规范库 C → 目标 agent（幂等断点续推，中途换 agent 可继续）")
-    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes", "opencode", "workbuddy", "minimax", "pi", "gemini", "cline"], help="推送目标")
+    s.add_argument("--target", required=True, choices=["dsh", "codex", "claude", "hermes", "opencode", "kilo", "workbuddy", "workbuddy-ai", "minimax", "pi", "gemini", "cline"], help="推送目标")
     s.add_argument("--source", default="", help="来源区（确认1/2）：C 里哪些源推过去")
     s.add_argument("--scope", default="", help="数据量（确认2/2）：inc|7d|30d|Nd|all（写 agent 存储，全量需确认）")
     s.add_argument("--confirm-history", action="store_true", help="历史全量的人工确认 token：--scope all 或 inc 首跑时，交互弹 y/N、非交互必给本参数")
@@ -2029,7 +2147,9 @@ def _regtest_writers():
         "claude": (lambda p: p.claude_projects, claudewrite),
         "hermes": (lambda p: p.hermes_db, hermeswrite),
         "opencode": (lambda p: p.opencode_db, opencodewrite),
+        "kilo": (lambda p: p.kilo_db, opencodewrite),
         "workbuddy": (lambda p: p.workbuddy_home, workbuddywrite),
+        "workbuddy-ai": (lambda p: p.workbuddy_ai_home, workbuddywrite),
         "minimax": (lambda p: p.minimax_home, minimaxwrite),
         "pi": (lambda p: p.pi_home, piwrite),
         "gemini": (lambda p: p.gemini_home, geminiwrite),
@@ -2265,9 +2385,10 @@ def cmd_doctor(args):
     fields = [("zcode", p.zcode_db), ("hermes", p.hermes_db), ("dsh", p.dsh_sessions),
               ("codex", p.codex_sessions), ("workbuddy", p.workbuddy_home),
               ("claude", p.claude_projects), ("opencode", p.opencode_db), ("qoder", p.qoder_home),
-              ("openclaw", p.openclaw_home), ("cursor", p.cursor_global_db), ("trae", p.trae_global_db)]
+              ("openclaw", p.openclaw_home), ("cursor", p.cursor_global_db), ("trae", p.trae_global_db),
+              ("mimo", p.mimo_home), ("kimi", p.kimi_home)]
     found = [n for n, v in fields if v]
-    print(f"  探测到 {len(found)}/11：{' '.join(found) or '（无）'}（未装的只是不可读，不算病）")
+    print(f"  探测到 {len(found)}/13：{' '.join(found) or '（无）'}（未装的只是不可读，不算病）")
 
     print("[5/8] 增量基准健康（6 写目标）...")
     import time as _t
@@ -2518,6 +2639,8 @@ def _filter_args(s):
     s.add_argument("--cwd", default=None, help="按工作区路径子串过滤")
     s.add_argument("--since", type=float, default=None, help="只看最近 N 天")
     s.add_argument("--limit", type=int, default=None, help="每个来源最多处理 N 个")
+    s.add_argument("--include-playground", action="store_true",
+                   help="workbuddy/workbuddy-ai：把 playground（试验场/未分区视图）会话也纳入")
 
 
 if __name__ == "__main__":
