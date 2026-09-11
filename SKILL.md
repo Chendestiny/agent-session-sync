@@ -11,7 +11,8 @@ description_en: Cross-agent session sync — read chat history from 15+ AI codin
 # 跨 Agent 会话同步（session-sync）
 
 本 skill 目录是一个自洽工具包：读取 codex / hermes / dsh / zcode / workbuddy / workbuddy-ai / kilo / claude / opencode / qoder / openclaw / cursor / trae / minimax / mimo / kimi / pi / gemini / cline 十九家会话（grok/copilot 占位待核验），
-写入 dsh（可续聊），并支持 Markdown 归档。
+写入 12 家目标（dsh / codex / claude / hermes / opencode / kilo / workbuddy / workbuddy-ai / minimax / pi / gemini / cline），并支持 Markdown 归档。
+dashboard 卡片 21 张（workbuddy 国内/国际各一卡；trae CN 自加密阻断只能整库快照）。
 **详细操作手册见同目录 `AGENTS.md`**（cookbook、安全铁律、故障排查、格式文档地图），
 格式深度规格见 `docs/FORMATS.md`。以下是要点。
 

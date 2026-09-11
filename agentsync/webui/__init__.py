@@ -32,11 +32,12 @@ _STATIC_MIME = {
     ".ico": "image/x-icon",
 }
 
-SOURCES = ["claude", "codex", "hermes", "openclaw", "zcode", "dsh", "workbuddy", "opencode", "qoder",
+SOURCES = ["claude", "codex", "hermes", "openclaw", "zcode", "dsh", "workbuddy", "workbuddy-ai", "kilo", "opencode", "qoder",
            "cursor", "trae", "mimo", "kimi", "minimax", "grok", "copilot", "gemini", "cline", "pi"]
 _ROOT_ATTR = {
     "zcode": "zcode_db", "hermes": "hermes_db", "dsh": "dsh_sessions",
-    "codex": "codex_sessions", "workbuddy": "workbuddy_home",
+    "codex": "codex_sessions", "workbuddy": "workbuddy_home", "workbuddy-ai": "workbuddy_ai_home",
+    "kilo": "kilo_db",
     "claude": "claude_projects", "opencode": "opencode_db", "qoder": "qoder_home",
     "openclaw": "openclaw_home", "cursor": "cursor_global_db", "trae": "trae_global_db",
     "mimo": "mimo_home", "kimi": "kimi_home", "minimax": "minimax_home",
@@ -51,8 +52,10 @@ def _imported_flag(source: str, sid: str, p) -> bool:
         return sid.startswith("import-")
     if source == "opencode":
         return bool(p.opencode_db) and sid in readers._oc_import_ids(p.opencode_db)
-    if source in ("hermes", "codex", "claude", "workbuddy"):
+    if source in ("hermes", "codex", "claude", "workbuddy", "workbuddy-ai"):
         return readers._is_agentsync_uuid5(sid)
+    if source == "kilo":
+        return bool(p.kilo_db) and sid in readers._bypass_import_ids(os.path.dirname(str(p.kilo_db)))
     if source == "minimax":
         return readers._mm_is_import(sid)
     if source == "pi":
@@ -114,10 +117,19 @@ def _trash_count(name: str, p) -> int | None:
             n = con.execute("SELECT COUNT(*) FROM sessions WHERE archived=1").fetchone()[0]
             con.close()
             return int(n)
-        if name == "workbuddy" and p.workbuddy_home:
-            wdb = os.path.join(str(p.workbuddy_home), "workbuddy.db")
+        if name in ("workbuddy", "workbuddy-ai") and getattr(p, "workbuddy_home" if name == "workbuddy" else "workbuddy_ai_home"):
+            wb_home = p.workbuddy_home if name == "workbuddy" else p.workbuddy_ai_home
+            wdb = os.path.join(str(wb_home), "workbuddy.db")
             con = sqlite3.connect(f"file:{wdb.replace(chr(92), '/')}?mode=ro", uri=True)
             n = con.execute("SELECT COUNT(*) FROM sessions WHERE deleted_at IS NOT NULL").fetchone()[0]
+            con.close()
+            return int(n)
+        if name == "kilo" and p.kilo_db:
+            con = sqlite3.connect(f"file:{str(p.kilo_db).replace(chr(92), '/')}?mode=ro", uri=True)
+            try:
+                n = con.execute("SELECT COUNT(*) FROM session WHERE time_archived IS NOT NULL").fetchone()[0]
+            except sqlite3.Error:
+                n = 0
             con.close()
             return int(n)
         if name == "dsh" and p.dsh_sessions:
@@ -172,10 +184,16 @@ def _hidden_ids(source: str, p) -> set[str]:
             ids = {r[0] for r in con.execute("SELECT id FROM sessions WHERE archived=1")}
             con.close()
             return ids
-        if source == "workbuddy" and p.workbuddy_home:
-            wdb = os.path.join(str(p.workbuddy_home), "workbuddy.db")
+        if source in ("workbuddy", "workbuddy-ai") and getattr(p, "workbuddy_home" if source == "workbuddy" else "workbuddy_ai_home"):
+            wb_home = p.workbuddy_home if source == "workbuddy" else p.workbuddy_ai_home
+            wdb = os.path.join(str(wb_home), "workbuddy.db")
             con = sqlite3.connect(f"file:{wdb.replace(chr(92), '/')}?mode=ro", uri=True)
             ids = {r[0] for r in con.execute("SELECT id FROM sessions WHERE deleted_at IS NOT NULL")}
+            con.close()
+            return ids
+        if source == "kilo" and p.kilo_db:
+            con = sqlite3.connect(f"file:{str(p.kilo_db).replace(chr(92), '/')}?mode=ro", uri=True)
+            ids = {r[0] for r in con.execute("SELECT id FROM session WHERE time_archived IS NOT NULL")}
             con.close()
             return ids
         if source == "dsh" and p.dsh_sessions:
@@ -212,6 +230,12 @@ def _display_sessions(source: str, p):
         return readers.read_hermes(p.hermes_db, include_archived=True, include_imports=True)
     if source == "workbuddy" and p.workbuddy_home:
         return readers.read_workbuddy(p.workbuddy_home, include_deleted=True, include_imports=True)
+    if source == "workbuddy-ai" and p.workbuddy_ai_home:
+        return readers.read_workbuddy(p.workbuddy_ai_home, include_deleted=True,
+                                      include_imports=True, source="workbuddy-ai")
+    if source == "kilo" and p.kilo_db:
+        return readers.read_kilo(os.path.dirname(str(p.kilo_db)), include_imports=True,
+                                 include_archived=True)
     if source == "dsh" and p.dsh_sessions:
         return readers.read_dsh(str(p.dsh_sessions), include_subagents=True, include_archived=True,
                                 include_imports=True)

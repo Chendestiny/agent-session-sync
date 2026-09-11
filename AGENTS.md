@@ -1,7 +1,17 @@
 # AGENTS.md — 跨 Agent 会话同步（给 AI agent 的操作手册）
 
-本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / workbuddy-ai(WorkBuddy AI 国际版) / kilo(Kilo CLI，opencode 分支) / claude code / opencode / qoder / openclaw / cursor / trae / minimax(MiniMax Code) / mimo(MiMoCode CLI) / kimi(Kimi Work) / pi(Pi Agent) / gemini(Gemini CLI) / cline(Cline)** 十九家 AI agent
+本文件夹是一个自洽工具包：把 **codex / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / workbuddy-ai(WorkBuddy AI 国际版，与国内版同一 agent 双发行版) / kilo(Kilo CLI，opencode 分支) / claude code / opencode / qoder / openclaw / cursor / trae / minimax(MiniMax Code) / mimo(MiMoCode CLI) / kimi(Kimi Work) / pi(Pi Agent) / gemini(Gemini CLI) / cline(Cline)** 十九家 AI agent
 的会话记录归一到 **dsh** 继续对话，并可导出 Markdown 归档（另有 **2 张占位卡**：grok(Grok Build=~/.grok/sessions JSONL 三层)/copilot(GitHub Copilot=VS Code chatSessions)——均源码核验，路径探测与手动绑定已留，待实装接 reader）。
+
+**家谱速览（2026-09-11 台账，webui 卡片数=21=本清单全集）**：
+- **实装 reader 19 个**（含 workbuddy 国内/国际双源**各自一卡**）；
+  **写入目标 12 家**：dsh、codex、claude、hermes、opencode、kilo(复用 opencodewrite)、
+  workbuddy、workbuddy-ai(复用 workbuddywrite)、minimax、pi、gemini、cline；
+  只读 7 家：zcode(写入已废弃)、openclaw、qoder、cursor、mimo、kimi、trae(见下)
+- **grok / copilot：占位未实装**（探测/绑定就位，reader 待实装）
+- **trae(CN)：明确不可读写**——正文库自加密阻断，仅整库快照备份/还原；
+  会话提取不存在（status 显示 0 是真实状态，webui 卡带 🔒 阻断 tag）
+- 防环、幂等、人在回路三道确认策略全源通用
 **zcode 只出不进**（仅读取源；写入方向已移除——双端同对话易混乱，实测亦有兼容问题）。
 你（AI agent）读完本文件即可安全操作，不需要其它上下文。
 

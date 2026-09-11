@@ -4,7 +4,7 @@
 
 二十一家 agent 一张网：codex CLI / hermes / dsh(DeepSeek Harness) / zcode / workbuddy / workbuddy-ai(WorkBuddy AI 国际版) / Kilo CLI / Claude Code / opencode / qoder / openclaw / cursor / trae / MiniMax Code / Pi Agent / Gemini CLI / Cline / grok / mimo / kimi / copilot。
 任何一家的历史会话都可以导入其余各家**继续对话**，并可导出统一的 **Markdown 归档**。
-单向归一（A→C→B：21 读 + 12 写，而非两两直连）。
+单向归一（A→C→B：21 卡 = 19 实装读取（workbuddy 国内/国际各一卡）+ 2 占位（grok/copilot）；12 写。trae CN 自加密阻断，仅整库快照）。
 
 | A · 读取源（21 家） | C · 归一化 | B · 写入目标（12 家 + 归档） |
 |---|---|---|
