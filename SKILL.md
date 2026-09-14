@@ -1,7 +1,7 @@
 ---
 name: session-sync
 description: 跨 Agent 会话同步（codex/hermes/dsh/zcode/workbuddy 等 agent → dsh 单向 + Markdown 归档）。当用户要"同步会话 / 导入会话 / 迁移会话 / 把 X 的会话搬到 Y / 归档会话 / 在 dsh 里继续另一家的会话"时使用。本目录即完整工具包：sync.py 为 CLI，AGENTS.md 为完整操作手册。 Cross-agent session sync — read chat history from 15+ AI coding agents (codex, Claude Code, openclaw, cursor, trae, Gemini CLI and more), import into dsh to continue conversations, plus Markdown archive export.
-version: 1.2.0
+version: 1.1.0
 display_name: 多Agent会话上下文搬家
 display_name_en: Agent Session Sync
 description_zh: 多 Agent 会话上下文搬家：把 codex / Claude Code / kilo / workbuddy（国内国际双版）/ minimax / hermes / openclaw / cursor / trae / gemini / cline / mimo / kimi / pi 等 21 家 AI agent 的历史会话搬进 dsh 继续聊——支持双向迁移、增量、幂等防环，另出 Markdown 归档与只读 dashboard。A→C→B 架构（读取源 → 规范库 → 写入目标），支持 12 家写入；幂等、增量、人在回路确认，自带只读可视化 dashboard。安装后对任意 agent 说一句"同步会话"即可触发。
