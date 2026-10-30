@@ -299,39 +299,80 @@ def tail_events(events: list[dict], from_turn: int, from_seq: int) -> list[dict]
 # ── 标题预投影（侧栏列表标题的数据源回填）───────────────────────────────
 
 
+def _projcache_layout(dsh_root: str) -> dict | None:
+    """Locate the projection cache medium.
+
+    Older dsh kept one ``session_projcache.json`` document. Current dsh uses
+    the per-record layout ``session_projcache/sessions/session-<id>.json``.
+    """
+    storages = os.path.join(os.path.dirname(str(dsh_root)), "storages")
+    legacy = os.path.join(storages, "session_projcache.json")
+    if os.path.isfile(legacy):
+        return {"mode": "legacy", "path": legacy}
+    per_record = os.path.join(storages, "session_projcache")
+    if os.path.isdir(per_record):
+        return {"mode": "per-record", "root": per_record}
+    return None
+
+
 def _projcache_path(dsh_root: str) -> str:
     return os.path.join(os.path.dirname(str(dsh_root)), "storages", "session_projcache.json")
 
 
 TITLE_ROW_VER = 1  # title 行的当前 schema 版本（实测本机 dsh 写入值）
+PROJCACHE_RECORD_VER = 7  # per-record 文档的 domain version（dsh 0.2.1）
+DSH_SESSION_FORMAT_VERSION = 4  # 旧 header 迁移后的逻辑格式版本
+
+
+def _per_record_path(layout: dict, sid: str) -> str:
+    # Per-record keys are the session ids themselves. Native ids already look
+    # like "session-<uuid>"; imported ids look like "import-session_<uuid>".
+    return os.path.join(layout["root"], "sessions", f"{sid}.json")
+
+
+def _format_version(layout: dict) -> int:
+    """Read the current Session format generation from any existing record."""
+    import glob as _glob
+
+    for path in _glob.glob(os.path.join(layout["root"], "sessions", "*.json")):
+        try:
+            doc = json.load(open(path, encoding="utf-8"))
+            value = doc.get("record", {}).get("identity", {}).get("formatVersion")
+            if isinstance(value, int):
+                return value
+        except (OSError, ValueError):
+            continue
+    return DSH_SESSION_FORMAT_VERSION
 
 
 def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
     """为缺少投影缓存的导入会话准备 title 行回填计划。
 
     机制（dsh-session-projection-cache cachedSnapshot）：侧栏列表标题读自
-    session_projcache.json 的 title 行（零 IO 列表读），该缓存正常只在会话被
+    投影缓存的 title 行（零 IO 列表读），该缓存正常只在会话被
     打开/adopt 时回填——直接落盘的导入会话因此全部回退显示工作区名。
-    行 schema 宽松（rows 任意子集合法），最小回填 = identity{createdAt,cwd} +
-    title 行 {ver:1, seq:<title事件seq>, val:<标题>}。
+    行 schema 宽松（rows 任意子集合法），最小回填 = identity + title 行
+    {ver:1, seq:<title事件seq>, val:<标题>}。
     identity 失配的条目 dsh 会整条拒绝（cachedSnapshot identity-check）→ 侧栏
-    无标题；因此 **title 一致但 identity 失配时也必须重建条目**（回归点：早期
-    版本 title 一致即 continue，跳过了 identity 校验）。
+    无标题；因此 title 一致但 identity 失配时也必须重建条目。
     """
     import glob as _glob
 
-    pc_path = _projcache_path(dsh_root)
-    if not os.path.exists(pc_path):
-        return {"backfill": {}, "reason": f"未找到 {pc_path}"}
-    pc = json.load(open(pc_path, encoding="utf-8"))
-    existing = pc.get("tables", {}).get("sessions", {})
+    layout = _projcache_layout(dsh_root)
+    if layout is None:
+        return {"backfill": {}, "reason": "未找到 dsh 投影缓存（session_projcache）"}
+
     backfill: dict[str, dict] = {}
+    legacy = layout["mode"] == "legacy"
+    if legacy:
+        pc = json.load(open(layout["path"], encoding="utf-8"))
+        existing = pc.get("tables", {}).get("sessions", {})
+    else:
+        pc = None
+        fmt = _format_version(layout)
 
     for path in sorted(_glob.glob(os.path.join(str(dsh_root), "*", "import-*", "session.jsonl*"))):
         sid = os.path.basename(os.path.dirname(path))
-        old = existing.get(sid, {})
-        old_row = (old.get("rows") or {}).get("title")
-        old_ident = old.get("identity") or {}
         try:
             header, events = read_log_events(path)
         except Exception:
@@ -344,23 +385,61 @@ def plan_title_backfill(dsh_root: str, only_imports: bool = True) -> dict:
         title = title_ev.get("data", {}).get("title")
         if not isinstance(title, str) or not title.strip():
             continue
-        identity = {"createdAt": header.get("createdAt", 0)}
-        if header.get("cwd") is not None:
-            identity["cwd"] = header["cwd"]
-        ident_ok = (
-            old_ident.get("createdAt") == identity.get("createdAt")
-            and old_ident.get("cwd") == identity.get("cwd")
-        )
+
+        if legacy:
+            old = existing.get(sid, {})
+            old_row = (old.get("rows") or {}).get("title")
+            old_ident = old.get("identity") or {}
+            identity = {"createdAt": header.get("createdAt", 0)}
+            if header.get("cwd") is not None:
+                identity["cwd"] = header["cwd"]
+            ident_ok = (
+                old_ident.get("createdAt") == identity.get("createdAt")
+                and old_ident.get("cwd") == identity.get("cwd")
+            )
+            if old_row is not None and old_row.get("val") == title and ident_ok:
+                continue
+            merged_rows = dict(old.get("rows") or {})
+            merged_rows["title"] = {"ver": TITLE_ROW_VER, "seq": title_ev.get("seq", 0), "val": title}
+            backfill[sid] = {"identity": identity, "rows": merged_rows}
+            continue
+
+        rec_path = _per_record_path(layout, sid)
+        old_doc = {}
+        if os.path.isfile(rec_path):
+            try:
+                old_doc = json.load(open(rec_path, encoding="utf-8"))
+            except (OSError, ValueError):
+                old_doc = {}
+        old_record = old_doc.get("record") or {}
+        old_row = (old_record.get("rows") or {}).get("title")
+        old_ident = old_record.get("identity") or {}
+        identity = {
+            "formatVersion": fmt,
+            "createdAt": header.get("createdAt", 0),
+            "cwd": header.get("cwd"),
+            "isSeeded": bool(header.get("isSeeded", False)),
+            "inheritedEventCount": 0,
+        }
+        if identity["cwd"] is None:
+            identity.pop("cwd")
+        ident_ok = all(old_ident.get(k) == v for k, v in identity.items())
         if old_row is not None and old_row.get("val") == title and ident_ok:
-            continue  # title 与 identity 均一致：无需回填
-        merged_rows = dict(old.get("rows") or {})
+            continue
+        merged_rows = dict(old_record.get("rows") or {})
         merged_rows["title"] = {"ver": TITLE_ROW_VER, "seq": title_ev.get("seq", 0), "val": title}
-        backfill[sid] = {"identity": identity, "rows": merged_rows}
-    return {"backfill": backfill, "projcache": pc, "pc_path": pc_path}
+        backfill[sid] = {
+            "identity": identity,
+            "rows": merged_rows,
+            "path": rec_path,
+            "existing": os.path.isfile(rec_path),
+        }
+
+    return {"backfill": backfill, "layout": layout, **({"projcache": pc, "pc_path": layout["path"]} if legacy else {})}
 
 
 def apply_title_backfill(plan: dict, dsh_running: bool = False) -> str:
-    """把回填计划写进 session_projcache.json（原子替换 + 备份）。dsh 运行中拒绝。"""
+    """把回填计划写进投影缓存（legacy 单文件或 per-record）。dsh 运行中拒绝。"""
     import shutil as _shutil
     import time as _time
 
@@ -368,18 +447,34 @@ def apply_title_backfill(plan: dict, dsh_running: bool = False) -> str:
         raise RuntimeError("检测到 dsh 正在运行：projcache 回填必须在 dsh 完全退出后执行")
     if not plan.get("backfill"):
         return "noop（无待回填）"
-    pc = plan["projcache"]
-    pc_path = plan["pc_path"]
-    sessions = pc.setdefault("tables", {}).setdefault("sessions", {})
+
+    stamp = _time.strftime("%Y%m%d-%H%M%S")
+    layout = plan["layout"]
+    if layout["mode"] == "legacy":
+        pc = plan["projcache"]
+        pc_path = plan["pc_path"]
+        sessions = pc.setdefault("tables", {}).setdefault("sessions", {})
+        for sid, entry in plan["backfill"].items():
+            sessions[sid] = entry
+        bak = f"{pc_path}.agentsync-bak-{stamp}"
+        _shutil.copy2(pc_path, bak)
+        tmp = pc_path + ".agentsync-tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(pc, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, pc_path)
+        return f"backfilled title rows for {len(plan['backfill'])} sessions (backup: {bak})"
+
+    os.makedirs(os.path.join(layout["root"], "sessions"), exist_ok=True)
     for sid, entry in plan["backfill"].items():
-        sessions[sid] = entry
-    bak = f"{pc_path}.agentsync-bak-{_time.strftime('%Y%m%d-%H%M%S')}"
-    _shutil.copy2(pc_path, bak)
-    tmp = pc_path + ".agentsync-tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(pc, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, pc_path)
-    return f"backfilled title rows for {len(plan['backfill'])} sessions (backup: {bak})"
+        rec_path = entry["path"]
+        if entry.get("existing") and os.path.isfile(rec_path):
+            _shutil.copy2(rec_path, f"{rec_path}.agentsync-bak-{stamp}")
+        doc = {"version": PROJCACHE_RECORD_VER, "record": {"identity": entry["identity"], "rows": entry["rows"]}}
+        tmp = rec_path + ".agentsync-tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(doc, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, rec_path)
+    return f"backfilled title rows for {len(plan['backfill'])} sessions (per-record)"
 
 
 # ── 会话清理（prune：孤儿 + 打招呼/测试会话 → 回收站，可恢复）──────────
