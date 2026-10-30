@@ -71,8 +71,8 @@ def mint_session_id(source_id: str) -> str:
 def synthesize(
     sess: Session,
     budget: int | None = None,
-    include_env_note: bool = True,
-    include_marker: bool = True,
+    include_env_note: bool = False,
+    include_marker: bool = False,
     title_override: str | None = None,
 ) -> tuple[dict, list[dict], dict]:
     """返回 (meta, events, stats)。meta/事件形状见模块 docstring。"""
@@ -107,7 +107,7 @@ def synthesize(
     mname = sess.model or provider
 
     if turns:
-        if include_marker:
+        if include_marker and meta["version"] != 0:
             marker = push(
                 "session/imported",
                 {
@@ -117,11 +117,10 @@ def synthesize(
                     "importedAt": now,
                 },
             )
-            # 宿主 KNOWN_SESSION_EVENT_TYPES 不含 session/imported：必须带顶层
-            # ignorable=true 才能通过 assertEventsSupported，否则整条日志被判
-            # SessionFormatUnsupportedError（dsh-session-persistence §envelope 契约）。
+            # 仅当前格式可直接写 unknown+ignorable。v0 迁移会拒绝所有未知历史
+            # 事件（包括 ignorable=true），所以 v0 日志不能携带本标记。
             marker["ignorable"] = True
-        if include_env_note:
+        if include_env_note and meta["version"] != 0:
             note = (
                 f"【环境变更提示】本会话已从 {provider} 迁移到 DeepSeek Harness（DSH）。"
                 "当前运行环境、可用工具列表、权限与执行指令均以 DSH 当前会话为准，"
@@ -439,8 +438,15 @@ def plan_prune(dsh_root: str, sources: dict[str, set[str]] | None = None,
         src = marker.get("data", {}).get("tool", "dsh" if not sid.startswith("import-") else "?")
         title_ev = next((e for e in reversed(events) if e.get("type") == "session/title"), None)
         title = (title_ev or {}).get("data", {}).get("title", "")
+        if src == "?":
+            # v0 导入日志不写 session/imported（迁移会拒绝），用标题前缀兜底。
+            for pref in ("kimi", "hermes", "codex", "workbuddy", "workbuddy-ai", "zcode",
+                         "claude", "opencode", "dsh"):
+                if title.startswith(f"[{pref}] "):
+                    src = pref
+                    break
         for pref in ("[hermes] ", "[codex] ", "[workbuddy] ", "[workbuddy-ai] ", "[zcode] ",
-                     "[claude] ", "[opencode] ", "[dsh] "):
+                     "[claude] ", "[opencode] ", "[dsh] ", "[kimi] "):
             if title.startswith(pref):
                 title = title[len(pref):]
         first_user = next((e for e in events if e.get("type") == "user/message"
